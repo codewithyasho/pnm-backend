@@ -2,6 +2,13 @@ from sqlmodel import SQLModel, Field
 from pydantic import EmailStr
 from typing import Optional
 from datetime import datetime, timezone
+from enum import Enum
+
+
+# ENUM for user enquiry status PENDING, COMPLETED
+class EnquiryStatus(str, Enum):
+    PENDING = "pending"
+    COMPLETED = "completed"
 
 
 class UserTable(SQLModel, table=True):
@@ -13,12 +20,14 @@ class UserTable(SQLModel, table=True):
     employee_count: Optional[str] = Field(default=None)
     primary_interest: Optional[str] = Field(default=None)
     specific_requirements: Optional[str] = Field(default=None)
+    status: EnquiryStatus = Field(default=EnquiryStatus.PENDING)
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc)
     )
 
 
 class UserRequestModel(SQLModel):
+    id: Optional[int]
     full_name: str = Field(min_length=3)
     corporate_email: EmailStr
     phone_number: str
@@ -26,6 +35,8 @@ class UserRequestModel(SQLModel):
     employee_count: Optional[str] = Field(default=None)
     primary_interest: Optional[str] = Field(default=None)
     specific_requirements: Optional[str] = Field(default=None)
+    status: EnquiryStatus
+    created_at: datetime
 
 
 class UserResponseModel(SQLModel):
@@ -37,3 +48,7 @@ class ListUsers(SQLModel):
     status: str = Field(default="success")
     count: int
     users: list[UserRequestModel]
+
+
+class UpdateEnquiryStatus(SQLModel):
+    status: EnquiryStatus

@@ -1,16 +1,18 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlmodel import Session, select, func
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlmodel import Session, select
 from src.database import get_session
 from src.auth import verify_api_key
-from models.user import UserTable, UserRequestModel, UserResponseModel, ListUsers
+from models.user import UserTable, UserRequestModel, UserResponseModel, ListUsers, UpdateEnquiryStatus, EnquiryStatus
 
 
-router = APIRouter(prefix="/users", tags=["Admin Dashboard"])
+router = APIRouter(prefix="/admin", tags=["Admin Dashboard"])
 
 
 @router.post(
-    "/",
+    "/user/submit",
     response_model=UserResponseModel,
+    description="Submit a new user form.",
+    response_description="Returns a success message upon successful form submission.",
     tags=["User Form Submission"]
 )
 def submit_form(
@@ -31,7 +33,7 @@ def submit_form(
 
 # list all users
 @router.get(
-    "/",
+    "/list/users",
     response_model=ListUsers,
     description="List all users.",
     response_description="Returns a list of all users.",
@@ -43,3 +45,165 @@ def list_users(session: Session = Depends(get_session), admin_key: str = Depends
         "count": len(users),
         "users": users
     }
+
+
+# list all companies
+@router.get(
+    "/list/companies",
+    description="List all companies.",
+    response_description="Returns a list of all companies.",
+)
+def list_companies(session: Session = Depends(get_session), admin_key: str = Depends(verify_api_key)):
+    companies = session.exec(select(UserTable.company_name).distinct()).all()
+    return {
+        "status": "success",
+        "count": len(companies),
+        "companies": companies
+    }
+
+
+# list all corporate emails
+@router.get(
+    "/list/emails",
+    description="List all corporate emails.",
+    response_description="Returns a list of all corporate emails.",
+)
+def list_emails(session: Session = Depends(get_session), admin_key: str = Depends(verify_api_key)):
+    emails = session.exec(select(UserTable.corporate_email).distinct()).all()
+    return {
+        "status": "success",
+        "count": len(emails),
+        "emails": emails
+    }
+
+
+# list all phone numbers
+@router.get(
+    "/list/numbers",
+    description="List all phone numbers.",
+    response_description="Returns a list of all phone numbers.",
+)
+def list_phones(session: Session = Depends(get_session), admin_key: str = Depends(verify_api_key)):
+    phones = session.exec(select(UserTable.phone_number).distinct()).all()
+    return {
+        "status": "success",
+        "count": len(phones),
+        "phones": phones
+    }
+
+
+# list full names
+@router.get(
+    "/list/names",
+    description="List all full names.",
+    response_description="Returns a list of all full names.",
+)
+def list_names(session: Session = Depends(get_session), admin_key: str = Depends(verify_api_key)):
+
+    names = session.exec(select(UserTable.full_name).distinct()).all()
+    return {
+        "status": "success",
+        "count": len(names),
+        "names": names
+    }
+
+
+# multi parameter filtering
+@router.get(
+    "/filter",
+    description="Filter users based on multiple parameters.",
+    response_description="Returns a list of users filtered by the provided parameters.",
+)
+def filter_users(
+    full_name: str | None = Query(
+        default=None, description="Filter by full name"
+    ),
+    corporate_email: str | None = Query(
+        default=None, description="Filter by corporate email"
+    ),
+    phone_number: str | None = Query(
+        default=None, description="Filter by phone number"
+    ),
+    company_name: str | None = Query(
+        default=None, description="Filter by company name"
+    ),
+    primary_interest: str | None = Query(
+        default=None, description="Filter by primary interest"
+    ),
+    status: EnquiryStatus | None = Query(
+        default=None, description="Filter by enquiry status (pending or completed)"
+    ),
+    created_at: str | None = Query(
+        default=None, description="Filter by creation date (YYYY-MM-DD)"
+    ),
+
+    # pagination parameters
+    skip: int = Query(
+        0, ge=0, description="Number of records to skip"
+    ),
+    limit: int = Query(
+        10, ge=1, le=50, description="Max records to return"
+    ),
+
+    session: Session = Depends(get_session),
+    admin_key: str = Depends(verify_api_key)
+):
+
+    # check if at least one filter parameter is provided
+    if full_name is None and corporate_email is None and phone_number is None and company_name is None and primary_interest is None and status is None:
+        raise HTTPException(
+            status_code=400, detail="At least one filter parameter must be provided.")
+
+    query = select(UserTable)
+
+    # apply filters based on provided parameters
+    query = query.where(UserTable.full_name ==
+                        full_name) if full_name else query
+    query = query.where(UserTable.corporate_email ==
+                        corporate_email) if corporate_email else query
+    query = query.where(UserTable.phone_number ==
+                        phone_number) if phone_number else query
+    query = query.where(UserTable.company_name ==
+                        company_name) if company_name else query
+    query = query.where(UserTable.primary_interest ==
+                        primary_interest) if primary_interest else query
+    query = query.where(UserTable.status ==
+                        status) if status else query
+
+    data = session.exec(query.offset(skip).limit(limit)).all()
+
+    return {
+        "status": "success",
+        "count": len(data),
+        "users": data
+    }
+
+
+# update enquiry status
+@router.patch(
+    "/update/status/{id}",
+    response_model=UserTable,
+    description="Update the status of a user enquiry.",
+    response_description="Returns the updated user enquiry."
+)
+def update_enquiry_status(
+    id: int,
+    status_update: UpdateEnquiryStatus,
+    session: Session = Depends(get_session),
+    admin_key: str = Depends(verify_api_key)
+):
+    # find the user by id
+    user = session.get(UserTable, id)
+    if not user:
+        raise HTTPException(
+            status_code=404, detail=f"User with id {id} not found.")
+
+    # update the status if provided
+    if status_update.status is not None:
+        user.status = status_update.status
+
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+
+    return user
