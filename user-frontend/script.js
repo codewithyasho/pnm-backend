@@ -1,0 +1,456 @@
+/**
+ * People Network Management LLP (PNM) - Interactive Application Scripts
+ * Pure Vanilla JavaScript (No Frameworks)
+ * Mobile-First & Touch-Optimized
+ */
+
+document.addEventListener("DOMContentLoaded", () => {
+  /* ==========================================================================
+     1. Mobile Drawer Navigation & Accordion
+     ========================================================================== */
+  const mobileToggle = document.getElementById("mobileToggle");
+  const navDrawer = document.getElementById("navDrawer");
+  const navOverlay = document.getElementById("navOverlay");
+  const drawerCloseBtn = document.getElementById("drawerCloseBtn");
+  const servicesToggle = document.getElementById("servicesToggle");
+
+  function openMobileDrawer() {
+    if (navDrawer && navOverlay && mobileToggle) {
+      navDrawer.classList.add("open");
+      navOverlay.classList.add("active");
+      mobileToggle.classList.add("open");
+      mobileToggle.setAttribute("aria-expanded", "true");
+      document.body.classList.add("menu-open");
+    }
+  }
+
+  function closeMobileDrawer() {
+    if (navDrawer && navOverlay && mobileToggle) {
+      navDrawer.classList.remove("open");
+      navOverlay.classList.remove("active");
+      mobileToggle.classList.remove("open");
+      mobileToggle.setAttribute("aria-expanded", "false");
+      document.body.classList.remove("menu-open");
+    }
+  }
+
+  if (mobileToggle) {
+    mobileToggle.addEventListener("click", () => {
+      const isOpen = navDrawer.classList.contains("open");
+      if (isOpen) {
+        closeMobileDrawer();
+      } else {
+        openMobileDrawer();
+      }
+    });
+  }
+
+  if (drawerCloseBtn) {
+    drawerCloseBtn.addEventListener("click", closeMobileDrawer);
+  }
+
+  if (navOverlay) {
+    navOverlay.addEventListener("click", closeMobileDrawer);
+  }
+
+  // Handle Mobile Accordion for Services dropdown
+  if (servicesToggle) {
+    servicesToggle.addEventListener("click", (e) => {
+      if (window.innerWidth <= 920) {
+        e.preventDefault();
+        const parentItem = servicesToggle.closest(".dropdown-parent");
+        if (parentItem) {
+          parentItem.classList.toggle("dropdown-open");
+        }
+      }
+    });
+  }
+
+  // Close mobile drawer when clicking regular navigation links
+  const allNavLinks = document.querySelectorAll(".nav-link, .dropdown-link");
+  allNavLinks.forEach((link) => {
+    link.addEventListener("click", (e) => {
+      // Don't close if it's the accordion toggle on mobile
+      if (link.id === "servicesToggle" && window.innerWidth <= 920) return;
+      closeMobileDrawer();
+    });
+  });
+
+  /* ==========================================================================
+     2. Interactive Deep-Dive Tabs & Cross-Links
+     ========================================================================== */
+  const tabButtons = document.querySelectorAll(".tab-btn");
+  const tabPanes = document.querySelectorAll(".tab-pane");
+
+  function activateTab(targetId) {
+    tabButtons.forEach((btn) => {
+      btn.classList.toggle("active", btn.getAttribute("data-tab") === targetId);
+    });
+    tabPanes.forEach((pane) => {
+      pane.classList.toggle("active", pane.id === targetId);
+    });
+  }
+
+  tabButtons.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const targetId = btn.getAttribute("data-tab");
+      activateTab(targetId);
+    });
+  });
+
+  // Support elements with data-tab-switch attributes
+  document.querySelectorAll("[data-tab-switch]").forEach((trigger) => {
+    trigger.addEventListener("click", (e) => {
+      const targetTab = trigger.getAttribute("data-tab-switch");
+      if (targetTab) {
+        activateTab(targetTab);
+        const deepDiveSec = document.getElementById("deep-dive");
+        if (deepDiveSec) {
+          deepDiveSec.scrollIntoView({ behavior: "smooth" });
+        }
+      }
+    });
+  });
+
+  // Support elements with data-tab-target (from dropdown)
+  document.querySelectorAll("[data-tab-target]").forEach((trigger) => {
+    trigger.addEventListener("click", (e) => {
+      const targetTab = trigger.getAttribute("data-tab-target");
+      if (targetTab) {
+        activateTab(targetTab);
+      }
+    });
+  });
+
+  /* ==========================================================================
+     3. 9-Step Implementation Stepper Interactive Highlighting
+     ========================================================================== */
+  const stepCards = document.querySelectorAll(".step-card");
+  stepCards.forEach((card) => {
+    card.addEventListener("click", () => {
+      stepCards.forEach((c) => c.classList.remove("active"));
+      card.classList.add("active");
+    });
+  });
+
+  /* ==========================================================================
+     4. Interactive HR Readiness & Savings Calculator
+     ========================================================================== */
+  const employeeRange = document.getElementById("employeeRange");
+  const employeeBadge = document.getElementById("employeeBadge");
+  const hoursSavedVal = document.getElementById("hoursSavedVal");
+  const riskReductionVal = document.getElementById("riskReductionVal");
+  const solutionTier = document.getElementById("solutionTier");
+
+  const checkPayroll = document.getElementById("checkPayroll");
+  const checkCompliance = document.getElementById("checkCompliance");
+  const checkHiring = document.getElementById("checkHiring");
+  const checkAttendance = document.getElementById("checkAttendance");
+
+  function updateCalculator() {
+    if (!employeeRange) return;
+    const count = parseInt(employeeRange.value, 10);
+    employeeBadge.textContent = `${count} Team`;
+
+    // Dynamic factor based on checkboxes
+    let factor = 0.25;
+    if (checkPayroll && checkPayroll.checked) factor += 0.2;
+    if (checkCompliance && checkCompliance.checked) factor += 0.15;
+    if (checkHiring && checkHiring.checked) factor += 0.12;
+    if (checkAttendance && checkAttendance.checked) factor += 0.15;
+
+    const savedHours = Math.round(count * factor);
+    hoursSavedVal.textContent = `${savedHours}+ Hours / mo`;
+
+    // Compliance Risk Calculation
+    if (checkCompliance && checkCompliance.checked) {
+      riskReductionVal.textContent = "99.8% Assured";
+    } else {
+      riskReductionVal.textContent = "96.5% Assured";
+    }
+
+    // Solution Recommendation
+    if (count < 50) {
+      solutionTier.textContent = "Payroll Outsourcing + Statutory Desk";
+    } else if (count <= 250) {
+      solutionTier.textContent = "Integrated Payroll & HRMS Cloud";
+    } else {
+      solutionTier.textContent = "Enterprise Payroll Cell + Dedicated SLA";
+    }
+  }
+
+  if (employeeRange) {
+    employeeRange.addEventListener("input", updateCalculator);
+    [checkPayroll, checkCompliance, checkHiring, checkAttendance].forEach(
+      (box) => {
+        if (box) box.addEventListener("change", updateCalculator);
+      },
+    );
+    updateCalculator();
+  }
+
+  /* ==========================================================================
+     5. Testimonials Carousel / Touch Swipe & Slider
+     ========================================================================== */
+  const testimonialContainer = document.getElementById("testimonialContainer");
+  const testimonialTrack = document.getElementById("testimonialTrack");
+  const carouselDots = document.querySelectorAll(".carousel-dot");
+  let currentSlide = 0;
+  const totalSlides = 3;
+  let autoSlideTimer = null;
+
+  function goToSlide(index) {
+    currentSlide = (index + totalSlides) % totalSlides;
+    if (testimonialTrack) {
+      testimonialTrack.style.transform = `translateX(-${currentSlide * 100}%)`;
+    }
+    carouselDots.forEach((dot, i) => {
+      dot.classList.toggle("active", i === currentSlide);
+    });
+  }
+
+  carouselDots.forEach((dot) => {
+    dot.addEventListener("click", () => {
+      const idx = parseInt(dot.getAttribute("data-index"), 10);
+      goToSlide(idx);
+      resetAutoSlide();
+    });
+  });
+
+  function startAutoSlide() {
+    autoSlideTimer = setInterval(() => {
+      goToSlide(currentSlide + 1);
+    }, 6000);
+  }
+
+  function resetAutoSlide() {
+    if (autoSlideTimer) clearInterval(autoSlideTimer);
+    startAutoSlide();
+  }
+
+  if (testimonialTrack) {
+    startAutoSlide();
+    if (testimonialContainer) {
+      testimonialContainer.addEventListener("mouseenter", () =>
+        clearInterval(autoSlideTimer),
+      );
+      testimonialContainer.addEventListener("mouseleave", () =>
+        resetAutoSlide(),
+      );
+
+      // Touch Swipe Gestures for Mobile Phones
+      let touchStartX = 0;
+      let touchEndX = 0;
+      let touchStartY = 0;
+      let touchEndY = 0;
+
+      testimonialContainer.addEventListener(
+        "touchstart",
+        (e) => {
+          touchStartX = e.changedTouches[0].screenX;
+          touchStartY = e.changedTouches[0].screenY;
+        },
+        { passive: true },
+      );
+
+      testimonialContainer.addEventListener(
+        "touchend",
+        (e) => {
+          touchEndX = e.changedTouches[0].screenX;
+          touchEndY = e.changedTouches[0].screenY;
+
+          const diffX = touchEndX - touchStartX;
+          const diffY = touchEndY - touchStartY;
+
+          // If predominantly horizontal swipe with at least 35px threshold
+          if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > 35) {
+            if (diffX < 0) {
+              // Swiped Left -> Next
+              goToSlide(currentSlide + 1);
+            } else {
+              // Swiped Right -> Prev
+              goToSlide(currentSlide - 1);
+            }
+            resetAutoSlide();
+          }
+        },
+        { passive: true },
+      );
+    }
+  }
+
+  /* ==========================================================================
+     6. Industry Items Interactive Filter / Selection
+     ========================================================================== */
+  const industryItems = document.querySelectorAll(".industry-item");
+  industryItems.forEach((item) => {
+    item.addEventListener("click", () => {
+      industryItems.forEach((i) => i.classList.remove("active"));
+      item.classList.add("active");
+    });
+  });
+
+  /* ==========================================================================
+     7. Interactive Consultation & Booking Modal
+     ========================================================================== */
+  const modal = document.getElementById("inquiryModal");
+  const modalCloseBtn = document.getElementById("modalCloseBtn");
+  const openModalBtns = document.querySelectorAll(".open-modal-btn");
+  const modalTabs = document.querySelectorAll(".modal-tab-pill");
+  const inquiryTypeInput = document.getElementById("inquiryType");
+  const modalTitle = document.getElementById("modalTitle");
+  const primaryInterestSelect = document.getElementById("primaryInterest");
+
+  const tabTypeMap = {
+    consultation: {
+      title: "Book an HR Strategy Consultation",
+      selectVal: "All 3 Integrated Pillars",
+      label: "Book a Consultation",
+    },
+    payroll: {
+      title: "Request a Comprehensive Payroll Review",
+      selectVal: "End-to-End Payroll & Compliance",
+      label: "Request a Payroll Review",
+    },
+    demo: {
+      title: "Book a Live Payroll Cell HRMS Demo",
+      selectVal: "Payroll Cell HRMS Implementation",
+      label: "Book a Payroll Cell Demo",
+    },
+    recruitment: {
+      title: "Discuss Your Hiring & Talent Requirements",
+      selectVal: "Recruitment & Talent Sourcing",
+      label: "Discuss Recruitment",
+    },
+  };
+
+  function setModalMode(modeKey) {
+    const config = tabTypeMap[modeKey] || tabTypeMap["consultation"];
+    if (modalTitle) modalTitle.textContent = config.title;
+    if (inquiryTypeInput) inquiryTypeInput.value = config.label;
+    if (primaryInterestSelect) primaryInterestSelect.value = config.selectVal;
+
+    modalTabs.forEach((tab) => {
+      tab.classList.toggle("active", tab.getAttribute("data-type") === modeKey);
+    });
+  }
+
+  function openModal(modeKey = "consultation") {
+    closeMobileDrawer(); // Close mobile drawer if it was open
+    setModalMode(modeKey);
+    if (modal) {
+      modal.classList.add("active");
+      document.body.classList.add("modal-open");
+      const firstInput = modal.querySelector('input:not([type="hidden"])');
+      if (firstInput && window.innerWidth > 640) {
+        setTimeout(() => firstInput.focus(), 150);
+      }
+    }
+  }
+
+  function closeModal() {
+    if (modal) {
+      modal.classList.remove("active");
+      document.body.classList.remove("modal-open");
+    }
+  }
+
+  openModalBtns.forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      const mode = btn.getAttribute("data-modal-type") || "consultation";
+      openModal(mode);
+    });
+  });
+
+  if (modalCloseBtn) {
+    modalCloseBtn.addEventListener("click", closeModal);
+  }
+
+  if (modal) {
+    modal.addEventListener("click", (e) => {
+      if (e.target === modal) closeModal();
+    });
+  }
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && modal && modal.classList.contains("active")) {
+      closeModal();
+    }
+  });
+
+  modalTabs.forEach((tab) => {
+    tab.addEventListener("click", () => {
+      const modeKey = tab.getAttribute("data-type");
+      setModalMode(modeKey);
+    });
+  });
+
+  /* ==========================================================================
+     8. Form Submission & Toast Notification
+     ========================================================================== */
+  const inquiryForm = document.getElementById("pnmInquiryForm");
+  const toastMsg = document.getElementById("toastMsg");
+  const toastText = document.getElementById("toastText");
+
+  function showToast(message) {
+    if (!toastMsg) return;
+    if (toastText) toastText.textContent = message;
+    toastMsg.classList.add("show", "success");
+    setTimeout(() => {
+      toastMsg.classList.remove("show");
+    }, 4500);
+  }
+
+  if (inquiryForm) {
+    inquiryForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const name = document.getElementById("fullName").value || "there";
+      const type = inquiryTypeInput ? inquiryTypeInput.value : "Inquiry";
+
+      closeModal();
+      showToast(
+        `Thank you, ${name}! Your request for "${type}" has been received. Our HR Advisory specialist will contact you shortly.`,
+      );
+      inquiryForm.reset();
+    });
+  }
+
+  /* ==========================================================================
+     9. Back to Top Button & Scrollspy
+     ========================================================================== */
+  const backToTopBtn = document.getElementById("backToTop");
+  const mainHeader = document.getElementById("mainHeader");
+
+  window.addEventListener(
+    "scroll",
+    () => {
+      const scrollPos = window.scrollY;
+
+      // Back to top visibility
+      if (backToTopBtn) {
+        if (scrollPos > 350) {
+          backToTopBtn.classList.add("visible");
+        } else {
+          backToTopBtn.classList.remove("visible");
+        }
+      }
+
+      // Header subtle shadow enhancement
+      if (mainHeader) {
+        if (scrollPos > 20) {
+          mainHeader.style.boxShadow = "0 4px 20px rgba(18, 61, 125, 0.1)";
+        } else {
+          mainHeader.style.boxShadow = "0 2px 14px rgba(18, 61, 125, 0.06)";
+        }
+      }
+    },
+    { passive: true },
+  );
+
+  if (backToTopBtn) {
+    backToTopBtn.addEventListener("click", () => {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+  }
+});
