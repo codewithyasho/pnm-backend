@@ -2077,6 +2077,11 @@ textarea {
   border-left: 4px solid var(--pnm-green);
 }
 
+.toast-msg.error {
+  border-left: 4px solid #ef4444;
+}
+
+
 /* Back to Top */
 .back-to-top {
   position: fixed;

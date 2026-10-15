@@ -27,7 +27,7 @@ class UserTable(SQLModel, table=True):
 
 
 class UserRequestModel(SQLModel):
-    id: Optional[int]
+    id: Optional[int] = Field(default=None)
     full_name: str = Field(min_length=3)
     corporate_email: EmailStr
     phone_number: str
@@ -35,8 +35,10 @@ class UserRequestModel(SQLModel):
     employee_count: Optional[str] = Field(default=None)
     primary_interest: Optional[str] = Field(default=None)
     specific_requirements: Optional[str] = Field(default=None)
-    status: EnquiryStatus
-    created_at: datetime
+    status: EnquiryStatus = Field(default=EnquiryStatus.PENDING)
+    created_at: Optional[datetime] = Field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
 
 
 class UserResponseModel(SQLModel):

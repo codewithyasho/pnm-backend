@@ -387,32 +387,143 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   /* ==========================================================================
-     8. Form Submission & Toast Notification
+     8. Form Submission & Toast Notification (POST /admin/user/submit)
      ========================================================================== */
   const inquiryForm = document.getElementById("pnmInquiryForm");
+  const submitInquiryBtn = document.getElementById("submitInquiryBtn");
   const toastMsg = document.getElementById("toastMsg");
   const toastText = document.getElementById("toastText");
 
-  function showToast(message) {
+  // Configurable API base URL: defaults to 127.0.0.1:8000
+  const API_BASE_URL = window.PNM_API_BASE || "http://127.0.0.1:8000";
+
+  let toastTimer = null;
+  function showToast(message, type = "success") {
     if (!toastMsg) return;
     if (toastText) toastText.textContent = message;
-    toastMsg.classList.add("show", "success");
-    setTimeout(() => {
+
+    if (toastTimer) clearTimeout(toastTimer);
+
+    toastMsg.classList.remove("success", "error");
+    toastMsg.classList.add("show", type);
+
+    const iconSpan = toastMsg.querySelector("span:first-child");
+    if (iconSpan) {
+      iconSpan.textContent = type === "error" ? "✕" : "✓";
+    }
+
+    toastTimer = setTimeout(() => {
       toastMsg.classList.remove("show");
-    }, 4500);
+    }, 5000);
   }
 
   if (inquiryForm) {
-    inquiryForm.addEventListener("submit", (e) => {
+    inquiryForm.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const name = document.getElementById("fullName").value || "there";
-      const type = inquiryTypeInput ? inquiryTypeInput.value : "Inquiry";
 
-      closeModal();
-      showToast(
-        `Thank you, ${name}! Your request for "${type}" has been received. Our HR Advisory specialist will contact you shortly.`,
-      );
-      inquiryForm.reset();
+      const fullName = (document.getElementById("fullName")?.value || "").trim();
+      const workEmail = (document.getElementById("workEmail")?.value || "").trim();
+      const phoneNumber = (document.getElementById("phoneNumber")?.value || "").trim();
+      const companyName = (document.getElementById("companyName")?.value || "").trim();
+      const employeeCount = (document.getElementById("employeeCount")?.value || "").trim();
+      const primaryInterest = (
+        document.getElementById("primaryInterest")?.value ||
+        inquiryTypeInput?.value ||
+        "General Consultation"
+      ).trim();
+      const projectMessage = (document.getElementById("projectMessage")?.value || "").trim();
+
+      // Client-side validation
+      if (fullName.length < 3) {
+        showToast("Please enter a valid full name (at least 3 characters).", "error");
+        document.getElementById("fullName")?.focus();
+        return;
+      }
+
+      if (!workEmail || !workEmail.includes("@") || !workEmail.includes(".")) {
+        showToast("Please enter a valid corporate email address.", "error");
+        document.getElementById("workEmail")?.focus();
+        return;
+      }
+
+      if (!phoneNumber || phoneNumber.length < 7) {
+        showToast("Please enter a valid phone number with country code.", "error");
+        document.getElementById("phoneNumber")?.focus();
+        return;
+      }
+
+      if (companyName.length < 3) {
+        showToast("Please enter a valid company name (at least 3 characters).", "error");
+        document.getElementById("companyName")?.focus();
+        return;
+      }
+
+      const payload = {
+        id: null,
+        full_name: fullName,
+        corporate_email: workEmail,
+        phone_number: phoneNumber,
+        company_name: companyName,
+        employee_count: employeeCount || null,
+        primary_interest: primaryInterest || null,
+        specific_requirements: projectMessage || null,
+        status: "pending",
+        created_at: new Date().toISOString(),
+      };
+
+      // Set loading state on button
+      const originalBtnHtml = submitInquiryBtn ? submitInquiryBtn.innerHTML : "Submit Request to PNM Team →";
+      if (submitInquiryBtn) {
+        submitInquiryBtn.disabled = true;
+        submitInquiryBtn.style.opacity = "0.75";
+        submitInquiryBtn.style.cursor = "not-allowed";
+        submitInquiryBtn.innerHTML = "Submitting Request... ⏳";
+      }
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/admin/user/submit`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        });
+
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+          let errorMsg = `Submission failed (${response.status} ${response.statusText})`;
+          if (data && data.detail) {
+            if (typeof data.detail === "string") {
+              errorMsg = data.detail;
+            } else if (Array.isArray(data.detail)) {
+              errorMsg = data.detail.map((d) => d.msg || JSON.stringify(d)).join(", ");
+            }
+          }
+          throw new Error(errorMsg);
+        }
+
+        // Success!
+        closeModal();
+        const successMessage =
+          data.message ||
+          `Thank you, ${fullName}! Your request for "${primaryInterest}" has been received. Our HR Advisory specialist will contact you shortly.`;
+        showToast(successMessage, "success");
+        inquiryForm.reset();
+      } catch (err) {
+        console.error("Form submission error:", err);
+        showToast(
+          err.message || "Failed to submit request. Please check your backend connection.",
+          "error"
+        );
+      } finally {
+        if (submitInquiryBtn) {
+          submitInquiryBtn.disabled = false;
+          submitInquiryBtn.style.opacity = "1";
+          submitInquiryBtn.style.cursor = "pointer";
+          submitInquiryBtn.innerHTML = originalBtnHtml;
+        }
+      }
     });
   }
 
