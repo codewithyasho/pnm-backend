@@ -207,3 +207,29 @@ def update_enquiry_status(
     session.refresh(user)
 
     return user
+
+
+# delete user by id
+@router.delete(
+    "/delete/user/{id}",
+    description="Delete a user by their ID.",
+    response_description="Returns a success message if the user is deleted."
+)
+def delete_user(
+    id: int,
+    session: Session = Depends(get_session),
+    admin_key: str = Depends(verify_api_key)
+):
+    user = session.get(UserTable, id)
+    if not user:
+        raise HTTPException(
+            status_code=404, detail=f"User with id {id} not found.")
+
+    session.delete(user)
+    session.commit()
+
+    return {
+        "status": "success",
+        "message": f"User with id {id} has been deleted."
+    }
+
