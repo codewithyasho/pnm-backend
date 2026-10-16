@@ -9,7 +9,7 @@ import type {
   EnquiryStatus,
 } from '../types';
 
-export const DEFAULT_API_BASE = 'http://127.0.0.1:8000';
+export const DEFAULT_API_BASE = 'https://yashodeep2006-finewavetech-api.hf.space';
 export const DEFAULT_API_KEY = '123';
 
 export const getStoredApiKey = (): string => {
@@ -21,7 +21,11 @@ export const setStoredApiKey = (key: string): void => {
 };
 
 export const getStoredApiBase = (): string => {
-  return localStorage.getItem('pnm_admin_api_base') || DEFAULT_API_BASE;
+  const stored = localStorage.getItem('pnm_admin_api_base');
+  if (!stored || stored === 'http://127.0.0.1:8000' || stored === 'http://localhost:8000') {
+    return DEFAULT_API_BASE;
+  }
+  return stored;
 };
 
 export const setStoredApiBase = (url: string): void => {

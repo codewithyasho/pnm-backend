@@ -9,8 +9,9 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/admin': {
-        target: 'http://127.0.0.1:8000',
+        target: 'https://yashodeep2006-finewavetech-api.hf.space',
         changeOrigin: true,
+        secure: true,
       },
     },
   },

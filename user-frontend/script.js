@@ -394,8 +394,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const toastMsg = document.getElementById("toastMsg");
   const toastText = document.getElementById("toastText");
 
-  // Configurable API base URL: defaults to 127.0.0.1:8000
-  const API_BASE_URL = window.PNM_API_BASE || "http://127.0.0.1:8000";
+  // Configurable API base URL: defaults to Hugging Face Spaces production backend
+  const API_BASE_URL = window.PNM_API_BASE || "https://yashodeep2006-finewavetech-api.hf.space";
 
   let toastTimer = null;
   function showToast(message, type = "success") {

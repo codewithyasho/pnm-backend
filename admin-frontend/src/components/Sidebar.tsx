@@ -167,9 +167,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Footer info in sidebar */}
         <div className="p-3 border-t border-slate-100 text-slate-400 text-[11px] flex items-center justify-between">
-          <span className="font-mono">FastAPI + SQLite</span>
+          <span className="font-mono">FastAPI Cloud</span>
           <a
-            href="http://127.0.0.1:8000/docs"
+            href="https://yashodeep2006-finewavetech-api.hf.space/docs"
             target="_blank"
             rel="noreferrer"
             className="flex items-center gap-1 text-indigo-600 hover:text-indigo-800 font-medium"
