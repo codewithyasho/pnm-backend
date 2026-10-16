@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type {
   UserEnquiry,
   EnquiryStatus,
@@ -12,6 +12,8 @@ import {
   CheckCircle2,
   Copy,
   MessageSquare,
+  Trash2,
+  AlertTriangle,
 } from 'lucide-react';
 
 interface EnquiryDetailModalProps {
@@ -20,6 +22,8 @@ interface EnquiryDetailModalProps {
   onUpdateStatus: (id: number, newStatus: EnquiryStatus) => Promise<void>;
   isUpdating: boolean;
   onCopyText: (text: string, label: string) => void;
+  onDeleteUser: (id: number) => Promise<void>;
+  isDeleting: boolean;
 }
 
 export const EnquiryDetailModal: React.FC<EnquiryDetailModalProps> = ({
@@ -28,7 +32,10 @@ export const EnquiryDetailModal: React.FC<EnquiryDetailModalProps> = ({
   onUpdateStatus,
   isUpdating,
   onCopyText,
+  onDeleteUser,
+  isDeleting,
 }) => {
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   if (!enquiry) return null;
 
   const isPending = enquiry.status.toLowerCase() === 'pending';
@@ -220,14 +227,62 @@ export const EnquiryDetailModal: React.FC<EnquiryDetailModalProps> = ({
           </div>
 
           {/* Footer */}
-          <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
-            <span className="text-xs text-slate-400">People Network Management LLP</span>
-            <button
-              onClick={onClose}
-              className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-200 transition-colors"
-            >
-              Close
-            </button>
+          <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3">
+            {showDeleteConfirm ? (
+              <div className="flex items-center justify-between w-full p-2.5 rounded-xl bg-rose-50 border border-rose-200">
+                <div className="flex items-center gap-2 text-rose-800 text-xs font-medium">
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600" />
+                  <span>Permanently delete this enquiry?</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowDeleteConfirm(false)}
+                    disabled={isDeleting}
+                    className="px-2.5 py-1 text-xs font-semibold text-slate-600 hover:text-slate-800"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={async () => {
+                      await onDeleteUser(enquiry.id);
+                      setShowDeleteConfirm(false);
+                      onClose();
+                    }}
+                    disabled={isDeleting}
+                    className="px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-2xs disabled:opacity-50"
+                  >
+                    {isDeleting ? (
+                      <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <Trash2 className="w-3 h-3" />
+                    )}
+                    <span>Confirm Delete</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteConfirm(true)}
+                  disabled={isDeleting}
+                  className="w-full sm:w-auto px-3 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 rounded-xl border border-rose-200 flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
+                  title="Delete this enquiry"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Delete Enquiry</span>
+                </button>
+
+                <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                  <button
+                    onClick={onClose}
+                    className="w-full sm:w-auto px-4 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-200 transition-colors"
+                  >
+                    Close
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>

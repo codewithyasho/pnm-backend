@@ -37,6 +37,7 @@ export function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [updatingId, setUpdatingId] = useState<number | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
   const [backendHealthy, setBackendHealthy] = useState<boolean | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -143,6 +144,41 @@ export function App() {
       addToast(msg, 'error');
     } finally {
       setUpdatingId(null);
+    }
+  };
+
+  // Handle Enquiry Deletion (Calls DELETE /admin/delete/user/{id})
+  const handleDeleteUser = async (id: number) => {
+    setDeletingId(id);
+    try {
+      const res = await api.deleteUser(id);
+
+      // Remove from memory immediately
+      setEnquiries((prev) => prev.filter((item) => item.id !== id));
+
+      if (selectedEnquiry && selectedEnquiry.id === id) {
+        setSelectedEnquiry(null);
+      }
+
+      addToast(res.message || `User with id ${id} has been deleted.`, 'success');
+
+      // Refresh auxiliary distinct lists in background
+      Promise.allSettled([
+        api.getCompanies(),
+        api.getEmails(),
+        api.getPhones(),
+        api.getNames(),
+      ]).then(([compRes, emailRes, phoneRes, nameRes]) => {
+        if (compRes.status === 'fulfilled') setCompanies(compRes.value.companies || []);
+        if (emailRes.status === 'fulfilled') setEmails(emailRes.value.emails || []);
+        if (phoneRes.status === 'fulfilled') setPhones(phoneRes.value.phones || []);
+        if (nameRes.status === 'fulfilled') setNames(nameRes.value.names || []);
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to delete user';
+      addToast(msg, 'error');
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -394,6 +430,8 @@ export function App() {
                 onUpdateStatus={handleUpdateStatus}
                 updatingId={updatingId}
                 onCopyText={handleCopyText}
+                onDeleteUser={handleDeleteUser}
+                deletingId={deletingId}
               />
             </div>
           )}
@@ -451,6 +489,8 @@ export function App() {
         onUpdateStatus={handleUpdateStatus}
         isUpdating={updatingId === selectedEnquiry?.id}
         onCopyText={handleCopyText}
+        onDeleteUser={handleDeleteUser}
+        isDeleting={deletingId === selectedEnquiry?.id}
       />
 
       {/* Settings Modal */}

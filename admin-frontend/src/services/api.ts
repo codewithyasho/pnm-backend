@@ -131,4 +131,10 @@ export const api = {
       body: JSON.stringify({ status }),
     });
   },
+
+  deleteUser: async (id: number): Promise<{ status: string; message: string }> => {
+    return makeRequest<{ status: string; message: string }>(`/admin/delete/user/${id}`, {
+      method: 'DELETE',
+    });
+  },
 };
