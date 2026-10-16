@@ -335,9 +335,24 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  const modalSuccessView = document.getElementById("modalSuccessView");
+  const successDoneBtn = document.getElementById("successDoneBtn");
+  const successDetailMsg = document.getElementById("successDetailMsg");
+  const summaryName = document.getElementById("summaryName");
+  const summaryCompany = document.getElementById("summaryCompany");
+  const summaryPillar = document.getElementById("summaryPillar");
+
   function openModal(modeKey = "consultation") {
     closeMobileDrawer(); // Close mobile drawer if it was open
     setModalMode(modeKey);
+
+    // Reset views
+    if (modalSuccessView) modalSuccessView.style.display = "none";
+    if (inquiryForm) {
+      inquiryForm.style.display = "block";
+      inquiryForm.reset();
+    }
+
     if (modal) {
       modal.classList.add("active");
       document.body.classList.add("modal-open");
@@ -352,6 +367,13 @@ document.addEventListener("DOMContentLoaded", () => {
     if (modal) {
       modal.classList.remove("active");
       document.body.classList.remove("modal-open");
+      setTimeout(() => {
+        if (modalSuccessView) modalSuccessView.style.display = "none";
+        if (inquiryForm) {
+          inquiryForm.style.display = "block";
+          inquiryForm.reset();
+        }
+      }, 300);
     }
   }
 
@@ -371,6 +393,10 @@ document.addEventListener("DOMContentLoaded", () => {
     modal.addEventListener("click", (e) => {
       if (e.target === modal) closeModal();
     });
+  }
+
+  if (successDoneBtn) {
+    successDoneBtn.addEventListener("click", closeModal);
   }
 
   document.addEventListener("keydown", (e) => {
@@ -414,117 +440,173 @@ document.addEventListener("DOMContentLoaded", () => {
 
     toastTimer = setTimeout(() => {
       toastMsg.classList.remove("show");
-    }, 5000);
+    }, 5500);
+  }
+
+  let isSubmitting = false;
+
+  async function handleInquirySubmit(e) {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    if (isSubmitting) return;
+
+    const fullNameInput = document.getElementById("fullName");
+    const workEmailInput = document.getElementById("workEmail");
+    const phoneNumberInput = document.getElementById("phoneNumber");
+    const companyNameInput = document.getElementById("companyName");
+    const employeeCountInput = document.getElementById("employeeCount");
+    const primaryInterestInput = document.getElementById("primaryInterest");
+    const projectMessageInput = document.getElementById("projectMessage");
+
+    const fullName = (fullNameInput?.value || "").trim();
+    const workEmail = (workEmailInput?.value || "").trim();
+    const phoneNumber = (phoneNumberInput?.value || "").trim();
+    const companyName = (companyNameInput?.value || "").trim();
+    const employeeCount = (employeeCountInput?.value || "").trim();
+    const primaryInterest = (
+      primaryInterestInput?.value ||
+      inquiryTypeInput?.value ||
+      "General Consultation"
+    ).trim();
+    const projectMessage = (projectMessageInput?.value || "").trim();
+
+    // Client-side validation with instant visual feedback
+    if (fullName.length < 2) {
+      showToast("Please enter your full name (at least 2 letters).", "error");
+      fullNameInput?.focus();
+      return;
+    }
+
+    if (!workEmail || !workEmail.includes("@") || !workEmail.includes(".")) {
+      showToast("Please enter a valid corporate email address.", "error");
+      workEmailInput?.focus();
+      return;
+    }
+
+    if (!phoneNumber || phoneNumber.length < 6) {
+      showToast("Please enter a valid contact phone number.", "error");
+      phoneNumberInput?.focus();
+      return;
+    }
+
+    if (companyName.length < 2) {
+      showToast("Please enter your company or organization name.", "error");
+      companyNameInput?.focus();
+      return;
+    }
+
+    isSubmitting = true;
+
+    // Set loading state on button with tactile mobile response
+    const btnSpan = submitInquiryBtn ? submitInquiryBtn.querySelector(".btn-text") : null;
+    const originalBtnText = btnSpan ? btnSpan.textContent : "Submit Request to PNM Team →";
+
+    if (submitInquiryBtn) {
+      submitInquiryBtn.disabled = true;
+      submitInquiryBtn.style.opacity = "0.75";
+      submitInquiryBtn.style.cursor = "not-allowed";
+      if (btnSpan) {
+        btnSpan.textContent = "Submitting Request... ⏳";
+      } else {
+        submitInquiryBtn.textContent = "Submitting Request... ⏳";
+      }
+    }
+
+    const payload = {
+      id: null,
+      full_name: fullName,
+      corporate_email: workEmail,
+      phone_number: phoneNumber,
+      company_name: companyName,
+      employee_count: employeeCount || null,
+      primary_interest: primaryInterest || null,
+      specific_requirements: projectMessage || null,
+      status: "pending",
+      created_at: new Date().toISOString(),
+    };
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/admin/user/submit`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        let errorMsg = `Submission failed (${response.status} ${response.statusText})`;
+        if (data && data.detail) {
+          if (typeof data.detail === "string") {
+            errorMsg = data.detail;
+          } else if (Array.isArray(data.detail)) {
+            errorMsg = data.detail.map((d) => d.msg || JSON.stringify(d)).join(", ");
+          }
+        }
+        throw new Error(errorMsg);
+      }
+
+      // Success! Switch to in-modal confirmation view
+      if (inquiryForm) inquiryForm.style.display = "none";
+      if (modalSuccessView) {
+        modalSuccessView.style.display = "block";
+        if (successDetailMsg) {
+          successDetailMsg.textContent =
+            data.message ||
+            `Thank you, ${fullName}! Your inquiry for "${primaryInterest}" has been successfully received. Our specialist will contact you shortly.`;
+        }
+        if (summaryName) summaryName.textContent = fullName;
+        if (summaryCompany) summaryCompany.textContent = companyName;
+        if (summaryPillar) summaryPillar.textContent = primaryInterest;
+
+        // Scroll modal body smoothly to the top to display the confirmation card
+        const modalBody = modal ? modal.querySelector(".modal-body") : null;
+        if (modalBody) modalBody.scrollTop = 0;
+      }
+
+      showToast(`Thank you, ${fullName}! Your inquiry was received.`, "success");
+      if (inquiryForm) inquiryForm.reset();
+    } catch (err) {
+      console.error("Form submission error:", err);
+      showToast(
+        err.message || "Failed to submit request. Please check your network connection.",
+        "error"
+      );
+    } finally {
+      isSubmitting = false;
+      if (submitInquiryBtn) {
+        submitInquiryBtn.disabled = false;
+        submitInquiryBtn.style.opacity = "1";
+        submitInquiryBtn.style.cursor = "pointer";
+        if (btnSpan) {
+          btnSpan.textContent = originalBtnText;
+        } else {
+          submitInquiryBtn.textContent = originalBtnText;
+        }
+      }
+    }
   }
 
   if (inquiryForm) {
-    inquiryForm.addEventListener("submit", async (e) => {
-      e.preventDefault();
+    inquiryForm.addEventListener("submit", handleInquirySubmit);
+  }
 
-      const fullName = (document.getElementById("fullName")?.value || "").trim();
-      const workEmail = (document.getElementById("workEmail")?.value || "").trim();
-      const phoneNumber = (document.getElementById("phoneNumber")?.value || "").trim();
-      const companyName = (document.getElementById("companyName")?.value || "").trim();
-      const employeeCount = (document.getElementById("employeeCount")?.value || "").trim();
-      const primaryInterest = (
-        document.getElementById("primaryInterest")?.value ||
-        inquiryTypeInput?.value ||
-        "General Consultation"
-      ).trim();
-      const projectMessage = (document.getElementById("projectMessage")?.value || "").trim();
-
-      // Client-side validation
-      if (fullName.length < 3) {
-        showToast("Please enter a valid full name (at least 3 characters).", "error");
-        document.getElementById("fullName")?.focus();
-        return;
-      }
-
-      if (!workEmail || !workEmail.includes("@") || !workEmail.includes(".")) {
-        showToast("Please enter a valid corporate email address.", "error");
-        document.getElementById("workEmail")?.focus();
-        return;
-      }
-
-      if (!phoneNumber || phoneNumber.length < 7) {
-        showToast("Please enter a valid phone number with country code.", "error");
-        document.getElementById("phoneNumber")?.focus();
-        return;
-      }
-
-      if (companyName.length < 3) {
-        showToast("Please enter a valid company name (at least 3 characters).", "error");
-        document.getElementById("companyName")?.focus();
-        return;
-      }
-
-      const payload = {
-        id: null,
-        full_name: fullName,
-        corporate_email: workEmail,
-        phone_number: phoneNumber,
-        company_name: companyName,
-        employee_count: employeeCount || null,
-        primary_interest: primaryInterest || null,
-        specific_requirements: projectMessage || null,
-        status: "pending",
-        created_at: new Date().toISOString(),
-      };
-
-      // Set loading state on button
-      const originalBtnHtml = submitInquiryBtn ? submitInquiryBtn.innerHTML : "Submit Request to PNM Team →";
-      if (submitInquiryBtn) {
-        submitInquiryBtn.disabled = true;
-        submitInquiryBtn.style.opacity = "0.75";
-        submitInquiryBtn.style.cursor = "not-allowed";
-        submitInquiryBtn.innerHTML = "Submitting Request... ⏳";
-      }
-
-      try {
-        const response = await fetch(`${API_BASE_URL}/admin/user/submit`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(payload),
-        });
-
-        const data = await response.json().catch(() => ({}));
-
-        if (!response.ok) {
-          let errorMsg = `Submission failed (${response.status} ${response.statusText})`;
-          if (data && data.detail) {
-            if (typeof data.detail === "string") {
-              errorMsg = data.detail;
-            } else if (Array.isArray(data.detail)) {
-              errorMsg = data.detail.map((d) => d.msg || JSON.stringify(d)).join(", ");
-            }
-          }
-          throw new Error(errorMsg);
+  if (submitInquiryBtn) {
+    // Listen to click and touchend to guarantee instant responsiveness on mobile devices
+    submitInquiryBtn.addEventListener("click", handleInquirySubmit);
+    submitInquiryBtn.addEventListener(
+      "touchend",
+      (e) => {
+        if (!isSubmitting) {
+          handleInquirySubmit(e);
         }
-
-        // Success!
-        closeModal();
-        const successMessage =
-          data.message ||
-          `Thank you, ${fullName}! Your request for "${primaryInterest}" has been received. Our HR Advisory specialist will contact you shortly.`;
-        showToast(successMessage, "success");
-        inquiryForm.reset();
-      } catch (err) {
-        console.error("Form submission error:", err);
-        showToast(
-          err.message || "Failed to submit request. Please check your backend connection.",
-          "error"
-        );
-      } finally {
-        if (submitInquiryBtn) {
-          submitInquiryBtn.disabled = false;
-          submitInquiryBtn.style.opacity = "1";
-          submitInquiryBtn.style.cursor = "pointer";
-          submitInquiryBtn.innerHTML = originalBtnHtml;
-        }
-      }
-    });
+      },
+      { passive: false }
+    );
   }
 
   /* ==========================================================================
