@@ -1,19 +1,91 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Session, select
+
 from src.database import get_session
 from src.auth import verify_api_key
-from models.user import UserTable, UserRequestModel, UserResponseModel, ListUsers, UpdateEnquiryStatus, EnquiryStatus
+from models.user import *
+
+from fastapi.responses import StreamingResponse
+import asyncio
+from src.sse import sse_manager
 
 
 router = APIRouter(prefix="/admin", tags=["Admin Dashboard"])
 
+
+# SSE endpoint for user form submissions
+
+@router.post(
+    "/sse/user/submit",
+    response_model=UserResponseModel,
+    description="Submit a new user form.",
+    response_description="Returns a success message upon successful form submission.",
+    tags=["User Form Submission"]
+)
+async def submit_form_sse(
+    user_data: UserRequestModel,
+    session: Session = Depends(get_session)
+):
+    new_user = UserTable.model_validate(user_data)
+    session.add(new_user)
+    session.commit()
+    # Loads auto-generated id & created_at from SQLite
+    session.refresh(new_user)
+
+    # Broadcast the newly saved user (as a JSON string) to all connected Admin tabs!
+    await sse_manager.broadcast(new_user.model_dump_json())
+
+    return {
+        "message": f"Thank you, {new_user.full_name}! Your request for '{new_user.primary_interest}' has been received. Our HR Advisory specialist will contact you shortly."
+    }
+
+
+# SSE endpoint for Admin Dashboard to receive real-time updates
+@router.get(
+    "/sse/stream",
+    description="Real-time SSE stream for new user enquiries.",
+    response_description="Streams newly submitted enquiries as Server-Sent Events."
+)
+async def stream_enquiries(admin_key: str = Depends(verify_api_key)):
+    # 1. Register this admin tab and get its dedicated queue
+    queue = await sse_manager.connect()
+
+    async def event_generator():
+        try:
+            while True:
+                try:
+                    # 2. Wait up to 15 seconds for new form submission JSON
+                    data = await asyncio.wait_for(queue.get(), timeout=15.0)
+                    yield f"event: new_enquiry\ndata: {data}\n\n"
+
+                except asyncio.TimeoutError:
+                    # 3. Send a silent heartbeat every 15s so proxies don't drop the connection
+                    yield ": heartbeat\n\n"
+
+        except asyncio.CancelledError:
+            # 4. Clean up the queue when the admin closes the tab
+            sse_manager.disconnect(queue)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
+    )
+
+
+# Normal endpoints (non-SSE)
 
 @router.post(
     "/user/submit",
     response_model=UserResponseModel,
     description="Submit a new user form.",
     response_description="Returns a success message upon successful form submission.",
-    tags=["User Form Submission"]
+    tags=["User Form Submission"],
+    deprecated=True
 )
 def submit_form(
     user_data: UserRequestModel,
@@ -24,7 +96,7 @@ def submit_form(
 
     session.add(new_user)
     session.commit()
-    session.add(new_user)
+    session.refresh(new_user)
 
     return {
         "message": f"""Thank you, {new_user.full_name}! Your request for '{new_user.primary_interest}' has been received. Our HR Advisory specialist will contact you shortly."""
@@ -232,4 +304,3 @@ def delete_user(
         "status": "success",
         "message": f"User with id {id} has been deleted."
     }
-

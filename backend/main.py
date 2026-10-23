@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
@@ -36,6 +37,7 @@ def home():
         "status": "healthy",
         "message": "visit /docs"
     }
+
 
 
 if __name__ == "__main__":
