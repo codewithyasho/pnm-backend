@@ -1,4 +1,5 @@
 import React from 'react';
+import type { SSEConnectionStatus } from '../types';
 import {
   Menu,
   RotateCw,
@@ -6,6 +7,7 @@ import {
   ShieldCheck,
   Server,
   Layers,
+  Radio,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -16,6 +18,7 @@ interface HeaderProps {
   isRefreshing: boolean;
   isBackendHealthy: boolean | null;
   totalRecords: number;
+  sseStatus?: SSEConnectionStatus;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -26,6 +29,7 @@ export const Header: React.FC<HeaderProps> = ({
   isRefreshing,
   isBackendHealthy,
   totalRecords,
+  sseStatus,
 }) => {
   return (
     <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-xs">
@@ -71,6 +75,43 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Right section: System health badge + Actions */}
           <div className="flex items-center gap-2 sm:gap-3">
+            {/* Real-time SSE Stream status pill */}
+            <div
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${
+                sseStatus === 'connected'
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200 shadow-xs'
+                  : sseStatus === 'connecting'
+                  ? 'bg-amber-50 text-amber-800 border-amber-200'
+                  : 'bg-slate-100 text-slate-600 border-slate-200'
+              }`}
+              title={
+                sseStatus === 'connected'
+                  ? 'Real-Time SSE Connected: New enquiries will stream in live automatically'
+                  : sseStatus === 'connecting'
+                  ? 'Connecting to real-time SSE stream (/admin/sse/stream)...'
+                  : 'SSE stream disconnected / reconnecting'
+              }
+            >
+              <span className="relative flex h-2 w-2">
+                {sseStatus === 'connected' && (
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                )}
+                <span
+                  className={`relative inline-flex rounded-full h-2 w-2 ${
+                    sseStatus === 'connected'
+                      ? 'bg-emerald-500'
+                      : sseStatus === 'connecting'
+                      ? 'bg-amber-500 animate-pulse'
+                      : 'bg-slate-400'
+                  }`}
+                />
+              </span>
+              <Radio className={`w-3.5 h-3.5 ${sseStatus === 'connected' ? 'text-emerald-600' : 'text-slate-400'}`} />
+              <span className="hidden sm:inline">
+                {sseStatus === 'connected' ? 'Live SSE' : sseStatus === 'connecting' ? 'Connecting...' : 'Stream Idle'}
+              </span>
+            </div>
+
             {/* Backend health status badge */}
             <div
               className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${

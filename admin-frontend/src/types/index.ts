@@ -1,5 +1,7 @@
 export type EnquiryStatus = 'pending' | 'completed';
 
+export type SSEConnectionStatus = 'connecting' | 'connected' | 'error' | 'disconnected';
+
 export interface UserEnquiry {
   id: number;
   full_name: string;

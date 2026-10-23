@@ -26,6 +26,7 @@ interface EnquiriesTableProps {
   onCopyText: (text: string, label: string) => void;
   onDeleteUser: (id: number) => Promise<void>;
   deletingId: number | null;
+  highlightedId?: number | null;
 }
 
 export const EnquiriesTable: React.FC<EnquiriesTableProps> = ({
@@ -37,6 +38,7 @@ export const EnquiriesTable: React.FC<EnquiriesTableProps> = ({
   onCopyText,
   onDeleteUser,
   deletingId,
+  highlightedId,
 }) => {
   const [confirmDeleteEnquiry, setConfirmDeleteEnquiry] = useState<UserEnquiry | null>(null);
 
@@ -123,17 +125,27 @@ export const EnquiriesTable: React.FC<EnquiriesTableProps> = ({
                 const isPending = enquiry.status.toLowerCase() === 'pending';
                 const isUpdating = updatingId === enquiry.id;
                 const isDeleting = deletingId === enquiry.id;
+                const isHighlighted = highlightedId === enquiry.id;
 
                 return (
                   <tr
                     key={enquiry.id}
-                    className="hover:bg-slate-50/80 transition-colors group cursor-pointer"
+                    className={`transition-all duration-500 group cursor-pointer ${
+                      isHighlighted
+                        ? 'bg-emerald-50/80 ring-2 ring-emerald-500/30'
+                        : 'hover:bg-slate-50/80'
+                    }`}
                     onClick={() => onSelectEnquiry(enquiry)}
                   >
                     {/* Name and contact info */}
                     <td className="py-3.5 px-4">
-                      <div className="font-semibold text-slate-900 group-hover:text-indigo-600 transition-colors capitalize">
-                        {enquiry.full_name}
+                      <div className="font-semibold text-slate-900 group-hover:text-indigo-600 transition-colors capitalize flex items-center gap-2">
+                        <span>{enquiry.full_name}</span>
+                        {isHighlighted && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-600 text-white animate-pulse">
+                            NEW
+                          </span>
+                        )}
                       </div>
                       <div className="flex items-center gap-2 mt-0.5 text-xs text-slate-500">
                         <button
@@ -274,17 +286,29 @@ export const EnquiriesTable: React.FC<EnquiriesTableProps> = ({
             const isPending = enquiry.status.toLowerCase() === 'pending';
             const isUpdating = updatingId === enquiry.id;
             const isDeleting = deletingId === enquiry.id;
+            const isHighlighted = highlightedId === enquiry.id;
 
             return (
               <div
                 key={enquiry.id}
                 onClick={() => onSelectEnquiry(enquiry)}
-                className="p-4 hover:bg-slate-50 active:bg-slate-100 transition-colors cursor-pointer space-y-3"
+                className={`p-4 transition-all duration-500 cursor-pointer space-y-3 ${
+                  isHighlighted
+                    ? 'bg-emerald-50/80 ring-2 ring-emerald-500/40'
+                    : 'hover:bg-slate-50 active:bg-slate-100'
+                }`}
               >
                 {/* Top row: Name + Status Badge */}
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <h4 className="font-bold text-slate-900 text-base capitalize">{enquiry.full_name}</h4>
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-bold text-slate-900 text-base capitalize">{enquiry.full_name}</h4>
+                      {isHighlighted && (
+                        <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-bold bg-emerald-600 text-white animate-pulse">
+                          NEW
+                        </span>
+                      )}
+                    </div>
                     <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-0.5">
                       <Building2 className="w-3.5 h-3.5 text-slate-400" />
                       <span className="font-semibold text-slate-700 capitalize">{enquiry.company_name}</span>

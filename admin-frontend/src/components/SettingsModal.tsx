@@ -58,9 +58,31 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       await api.checkHealth();
       const usersRes = await api.getUsers();
 
+      // Test SSE stream connectivity via header-authenticated fetch (no URL query params)
+      let sseSuccess = true;
+      try {
+        const testController = new AbortController();
+        const testTimer = setTimeout(() => testController.abort(), 2000);
+        const sseRes = await fetch(`${apiBase.replace(/\/$/, '')}/admin/sse/stream`, {
+          method: 'GET',
+          headers: {
+            'x-api-key': apiKey,
+            'Accept': 'text/event-stream',
+          },
+          signal: testController.signal,
+        });
+        clearTimeout(testTimer);
+        testController.abort();
+        sseSuccess = sseRes.ok;
+      } catch {
+        sseSuccess = false;
+      }
+
       setTestResult({
         success: true,
-        message: `Success! Connected to FastAPI backend. Loaded ${usersRes.count} user records.`,
+        message: `Success! Connected to FastAPI backend (${usersRes.count} records). SSE Stream: ${
+          sseSuccess ? 'Connected (Ready for real-time live events)' : 'Pending backend SSE deployment'
+        }.`,
       });
     } catch (err: unknown) {
       setTestResult({
@@ -121,6 +143,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <p className="text-[11px] text-slate-400 mt-1">
                 FastAPI address (default: <span className="font-mono">https://yashodeep2006-finewavetech-api.hf.space</span>)
               </p>
+              <div className="flex items-center gap-2 mt-1.5">
+                <span className="text-[11px] text-slate-400">Presets:</span>
+                <button
+                  type="button"
+                  onClick={() => setApiBase('https://yashodeep2006-finewavetech-api.hf.space')}
+                  className="px-2 py-0.5 rounded text-[11px] font-mono bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 cursor-pointer"
+                >
+                  HF Cloud
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setApiBase('http://127.0.0.1:8000')}
+                  className="px-2 py-0.5 rounded text-[11px] font-mono bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200 cursor-pointer"
+                >
+                  Local (127.0.0.1:8000)
+                </button>
+              </div>
             </div>
 
             {/* Admin API Key input */}

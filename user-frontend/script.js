@@ -413,7 +413,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   /* ==========================================================================
-     8. Form Submission & Toast Notification (POST /admin/user/submit)
+     8. Form Submission & Toast Notification (POST /admin/sse/user/submit)
      ========================================================================== */
   const inquiryForm = document.getElementById("pnmInquiryForm");
   const submitInquiryBtn = document.getElementById("submitInquiryBtn");
@@ -528,7 +528,7 @@ document.addEventListener("DOMContentLoaded", () => {
     };
 
     try {
-      const response = await fetch(`${API_BASE_URL}/admin/user/submit`, {
+      const response = await fetch(`${API_BASE_URL}/admin/sse/user/submit`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

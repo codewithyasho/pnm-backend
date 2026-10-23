@@ -7,6 +7,7 @@ import type {
   ListNamesResponse,
   FilterParams,
   EnquiryStatus,
+  SSEConnectionStatus,
 } from '../types';
 
 export const DEFAULT_API_BASE = 'https://yashodeep2006-finewavetech-api.hf.space';
@@ -140,5 +141,127 @@ export const api = {
     return makeRequest<{ status: string; message: string }>(`/admin/delete/user/${id}`, {
       method: 'DELETE',
     });
+  },
+
+  /**
+   * Real-time Server-Sent Events (SSE) Stream Subscription via fetch() ReadableStream.
+   * Sends API key securely via "x-api-key" HTTP Header (NO query parameters in URL).
+   * Endpoint: GET /admin/sse/stream
+   * Headers: { "x-api-key": <ADMIN_KEY>, "Accept": "text/event-stream" }
+   * Broadcasts: event: new_enquiry
+   *
+   * @param onNewEnquiry Callback invoked when a 'new_enquiry' event is received
+   * @param onStatusChange Callback invoked when connection status changes
+   * @returns Cleanup function to cleanly abort the stream connection
+   */
+  subscribeToEnquiries: (
+    onNewEnquiry: (enquiry: UserEnquiry) => void,
+    onStatusChange?: (status: SSEConnectionStatus) => void
+  ): (() => void) => {
+    const base = getStoredApiBase();
+    const apiKey = getStoredApiKey();
+    const sseUrl = `${base}/admin/sse/stream`;
+
+    let abortController = new AbortController();
+    let isAborted = false;
+    let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+
+    const connect = async () => {
+      if (isAborted) return;
+      onStatusChange?.('connecting');
+
+      // Create a fresh AbortController for each attempt
+      abortController = new AbortController();
+
+      try {
+        const response = await fetch(sseUrl, {
+          method: 'GET',
+          headers: {
+            'x-api-key': apiKey,
+            'Accept': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+          },
+          signal: abortController.signal,
+        });
+
+        if (!response.ok) {
+          throw new Error(`SSE HTTP Error ${response.status} ${response.statusText}`);
+        }
+
+        if (!response.body) {
+          throw new Error('ReadableStream not supported or response body empty');
+        }
+
+        onStatusChange?.('connected');
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder('utf-8');
+        let buffer = '';
+
+        while (!isAborted) {
+          const { value, done } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+
+          // SSE messages are separated by double newlines (\n\n or \r\n\r\n)
+          const parts = buffer.split(/\r?\n\r?\n/);
+          buffer = parts.pop() || '';
+
+          for (const part of parts) {
+            const lines = part.split(/\r?\n/);
+            let eventType = 'message';
+            let eventData = '';
+
+            for (const line of lines) {
+              const trimmed = line.trim();
+              // Ignore comments / heartbeats (lines starting with ':') or empty lines
+              if (!trimmed || trimmed.startsWith(':')) continue;
+
+              if (trimmed.startsWith('event:')) {
+                eventType = trimmed.slice(6).trim();
+              } else if (trimmed.startsWith('data:')) {
+                const dataSlice = trimmed.slice(5).trim();
+                eventData = eventData ? `${eventData}\n${dataSlice}` : dataSlice;
+              }
+            }
+
+            // If it's a new_enquiry event and has data, parse JSON
+            if (eventType === 'new_enquiry' && eventData) {
+              try {
+                const newEnquiry: UserEnquiry = JSON.parse(eventData);
+                onNewEnquiry(newEnquiry);
+              } catch (parseErr) {
+                console.error('[SSE] Failed to parse new_enquiry JSON:', parseErr, eventData);
+              }
+            }
+          }
+        }
+      } catch (err: unknown) {
+        if (isAborted || (err instanceof DOMException && err.name === 'AbortError')) {
+          return;
+        }
+        console.warn('[SSE] Stream disconnected or network error:', err);
+        onStatusChange?.('error');
+      }
+
+      // If connection closed or broke and not aborted, auto-reconnect after 3 seconds
+      if (!isAborted) {
+        reconnectTimeout = setTimeout(() => {
+          if (!isAborted) {
+            connect();
+          }
+        }, 3000);
+      }
+    };
+
+    connect();
+
+    return () => {
+      isAborted = true;
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
+      abortController.abort();
+      onStatusChange?.('disconnected');
+    };
   },
 };

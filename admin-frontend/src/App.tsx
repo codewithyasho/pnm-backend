@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import type {
   UserEnquiry,
   EnquiryStatus,
+  SSEConnectionStatus,
 } from './types';
 import { api } from './services/api';
 import { Header } from './components/Header';
@@ -40,6 +41,11 @@ export function App() {
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [backendHealthy, setBackendHealthy] = useState<boolean | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+
+  // Real-time SSE state
+  const [sseStatus, setSseStatus] = useState<SSEConnectionStatus>('connecting');
+  const [highlightedId, setHighlightedId] = useState<number | null>(null);
+  const [configVersion, setConfigVersion] = useState(0);
 
   // Filters state
   const [searchTerm, setSearchTerm] = useState('');
@@ -118,7 +124,66 @@ export function App() {
 
   useEffect(() => {
     loadDashboardData();
-  }, [loadDashboardData]);
+  }, [loadDashboardData, configVersion]);
+
+  // Real-Time Server-Sent Events (SSE) Stream Subscription
+  useEffect(() => {
+    const unsubscribe = api.subscribeToEnquiries(
+      (newEnquiry) => {
+        // 1. Prepend newly received enquiry into memory immediately
+        setEnquiries((prev) => {
+          const exists = prev.some((e) => e.id === newEnquiry.id);
+          if (exists) {
+            return prev.map((e) => (e.id === newEnquiry.id ? newEnquiry : e));
+          }
+          return [newEnquiry, ...prev];
+        });
+
+        // 2. Incrementally add any new company, email, phone, or name into filter dropdowns
+        if (newEnquiry.company_name) {
+          setCompanies((prev) =>
+            prev.some((c) => c.toLowerCase() === newEnquiry.company_name.toLowerCase())
+              ? prev
+              : [newEnquiry.company_name, ...prev]
+          );
+        }
+        if (newEnquiry.corporate_email) {
+          setEmails((prev) =>
+            prev.includes(newEnquiry.corporate_email) ? prev : [newEnquiry.corporate_email, ...prev]
+          );
+        }
+        if (newEnquiry.phone_number) {
+          setPhones((prev) =>
+            prev.includes(newEnquiry.phone_number) ? prev : [newEnquiry.phone_number, ...prev]
+          );
+        }
+        if (newEnquiry.full_name) {
+          setNames((prev) =>
+            prev.includes(newEnquiry.full_name) ? prev : [newEnquiry.full_name, ...prev]
+          );
+        }
+
+        // 3. Briefly highlight the new row/card so the admin's attention is drawn to it
+        setHighlightedId(newEnquiry.id);
+        setTimeout(() => {
+          setHighlightedId((curr) => (curr === newEnquiry.id ? null : curr));
+        }, 8000);
+
+        // 4. Alert with instant real-time notification
+        addToast(
+          `🔔 Real-Time Enquiry: ${newEnquiry.full_name} (${newEnquiry.company_name || 'Individual'})`,
+          'success'
+        );
+      },
+      (status) => {
+        setSseStatus(status);
+      }
+    );
+
+    return () => {
+      unsubscribe();
+    };
+  }, [addToast, configVersion]);
 
   // Handle Enquiry Status Update (Calls PATCH /admin/update/status/{id})
   const handleUpdateStatus = async (id: number, newStatus: EnquiryStatus) => {
@@ -324,6 +389,7 @@ export function App() {
         isRefreshing={isRefreshing}
         isBackendHealthy={backendHealthy}
         totalRecords={enquiries.length}
+        sseStatus={sseStatus}
       />
 
       <div className="flex-1 flex max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 gap-6">
@@ -432,6 +498,7 @@ export function App() {
                 onCopyText={handleCopyText}
                 onDeleteUser={handleDeleteUser}
                 deletingId={deletingId}
+                highlightedId={highlightedId}
               />
             </div>
           )}
@@ -499,6 +566,7 @@ export function App() {
         onClose={() => setIsSettingsOpen(false)}
         onSaved={() => {
           addToast('API settings saved successfully', 'success');
+          setConfigVersion((v) => v + 1);
           loadDashboardData();
         }}
       />
