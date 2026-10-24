@@ -56,3 +56,44 @@ export interface FilterParams {
   skip?: number;
   limit?: number;
 }
+
+export type SenderRole = 'user' | 'admin';
+
+export interface ChatMessage {
+  id?: number;
+  user_email: string;
+  user_name: string;
+  sender_role: SenderRole;
+  message: string;
+  is_broadcast: boolean;
+  is_read_by_admin: boolean;
+  created_at: string;
+}
+
+export interface ChatSessionThread {
+  corporate_email: string;
+  full_name: string;
+  is_online: boolean;
+  last_active_at: string;
+  unread_count: number;
+  messages: ChatMessage[];
+}
+
+export interface ConversationsResponse {
+  status: string;
+  online_users: string[];
+  threads: ChatSessionThread[];
+}
+
+export interface UserPresenceEvent {
+  event: 'user_presence';
+  user_email: string;
+  is_online: boolean;
+  online_users: string[];
+}
+
+export interface ChatMessageEvent {
+  event: 'chat_message';
+  data: ChatMessage;
+}
+

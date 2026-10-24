@@ -1508,6 +1508,119 @@
     <span id="toastText">Thank you! Your request has been received. Our HR specialist will reach out shortly.</span>
   </div>
 
+  <!-- ==========================================================================
+       REAL-TIME LIVE SUPPORT CHAT WIDGET
+       ========================================================================== -->
+  <div class="pnm-chat-widget" id="pnmChatWidget">
+    <!-- Floating Launcher Toggle Button -->
+    <button type="button" class="pnm-chat-launcher" id="pnmChatLauncher" aria-label="Open Live Support Chat">
+      <div class="launcher-icon-wrap">
+        <!-- Robot / Support Icon (Default) -->
+        <svg class="icon-open" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="11" width="18" height="10" rx="2"></rect>
+          <circle cx="12" cy="5" r="2"></circle>
+          <path d="M12 7v4"></path>
+          <line x1="8" y1="16" x2="8" y2="16"></line>
+          <line x1="16" y1="16" x2="16" y2="16"></line>
+        </svg>
+        <!-- Close (✕) Icon (When Open) -->
+        <svg class="icon-close" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </div>
+      <!-- Unread Indicator Badge -->
+      <span class="pnm-chat-badge" id="pnmChatBadge" style="display: none;">0</span>
+      <span class="launcher-pulse"></span>
+    </button>
+
+    <!-- Chat Window Container -->
+    <div class="pnm-chat-window" id="pnmChatWindow" aria-hidden="true">
+      <!-- Window Header -->
+      <div class="pnm-chat-header">
+        <div class="chat-header-info">
+          <div class="chat-header-avatar">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="11" width="18" height="10" rx="2"></rect>
+              <circle cx="12" cy="5" r="2"></circle>
+              <path d="M12 7v4"></path>
+              <line x1="8" y1="16" x2="8" y2="16"></line>
+              <line x1="16" y1="16" x2="16" y2="16"></line>
+            </svg>
+          </div>
+          <div>
+            <div class="chat-header-title">PNM Live Support</div>
+            <div class="chat-header-status" id="pnmChatStatus">
+              <span class="status-dot"></span>
+              <span class="status-text" id="pnmStatusText">Online • Ready to help</span>
+            </div>
+          </div>
+        </div>
+        <div class="chat-header-actions">
+          <button type="button" class="chat-minimize-btn" id="pnmChatMinimizeBtn" aria-label="Minimize Chat">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- View 1: Pre-Chat Identification Form -->
+      <div class="pnm-chat-preform" id="pnmChatPreForm">
+        <div class="preform-header">
+          <div class="preform-icon">💬</div>
+          <h4>Start a Conversation</h4>
+          <p>Connect instantly with our Senior HR & Payroll advisory team.</p>
+        </div>
+        <form id="pnmPreChatForm" class="preform-body">
+          <div class="preform-field">
+            <label for="pnmChatNameInput" class="preform-label">Full Name *</label>
+            <input type="text" id="pnmChatNameInput" class="preform-input" placeholder="e.g. Rahul Sharma" required />
+          </div>
+          <div class="preform-field">
+            <label for="pnmChatEmailInput" class="preform-label">Corporate Email *</label>
+            <input type="email" id="pnmChatEmailInput" class="preform-input" placeholder="e.g. rahul@company.com" required />
+          </div>
+          <button type="submit" class="preform-submit-btn" id="pnmStartChatBtn">
+            <span>Start Live Chat →</span>
+          </button>
+          <p class="preform-footer-note">🔒 No password needed. Instant connection via secure WebSocket.</p>
+        </form>
+      </div>
+
+      <!-- View 2: Live Conversation Thread -->
+      <div class="pnm-chat-thread-view" id="pnmChatThreadView" style="display: none;">
+        <!-- Visitor Session Sub-header -->
+        <div class="chat-user-bar">
+          <span class="chat-user-tag">
+            Chatting as <strong id="pnmChatCurrentUserName">Visitor</strong>
+          </span>
+          <button type="button" class="chat-reset-btn" id="pnmChatResetBtn" title="Change name or email">
+            Switch
+          </button>
+        </div>
+
+        <!-- Scrollable Messages Area -->
+        <div class="pnm-chat-messages" id="pnmChatMessages">
+          <div class="chat-msg chat-msg-system">
+            <p>Welcome! Our team is online and ready to assist you. Send a message below to start.</p>
+          </div>
+        </div>
+
+        <!-- Message Composer Form -->
+        <form class="pnm-chat-input-bar" id="pnmChatInputForm">
+          <input type="text" id="pnmChatMessageInput" class="chat-text-input" placeholder="Type a message..." maxlength="2000" autocomplete="off" />
+          <button type="submit" class="chat-send-btn" id="pnmChatSendBtn" aria-label="Send Message">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="22" y1="2" x2="11" y2="13"></line>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+            </svg>
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
   <!-- Back to Top Button -->
   <button type="button" class="back-to-top" id="backToTop" aria-label="Back to top">
     <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">

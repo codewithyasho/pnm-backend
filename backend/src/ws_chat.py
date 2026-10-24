@@ -22,7 +22,7 @@ class ChatConnectionManager:
 
         self.user_connections[email].append(websocket)
         print(
-            f"🟢 Visitor connected: {email} (Tabs: {len(self.user_connections[email])})")
+            f"[ONLINE] Visitor connected: {email} (Tabs: {len(self.user_connections[email])})")
 
         # Notify all open Admin tabs that this user is now ONLINE!
         await self.send_to_admins({
@@ -37,12 +37,12 @@ class ChatConnectionManager:
         if email in self.user_connections:
             if websocket in self.user_connections[email]:
                 self.user_connections[email].remove(websocket)
-                print(f"⚪ Visitor tab closed: {email}")
+                print(f"[TAB CLOSED] Visitor tab closed: {email}")
 
             # Only mark offline if ALL tabs for this email are closed
             if not self.user_connections[email]:
                 del self.user_connections[email]
-                print(f"⚪ Visitor offline: {email}")
+                print(f"[OFFLINE] Visitor offline: {email}")
 
                 # Notify all open Admin tabs that this user is now OFFLINE!
                 await self.send_to_admins({
@@ -60,14 +60,14 @@ class ChatConnectionManager:
         await websocket.accept()
         self.admin_connections.append(websocket)
         print(
-            f"🛡️ Admin connected to Live Chat! (Total Admin tabs: {len(self.admin_connections)})")
+            f"[ADMIN CONNECTED] Admin connected to Live Chat! (Total Admin tabs: {len(self.admin_connections)})")
 
     # 2. Disconnect an Admin Dashboard tab from the WebSocket server
     def disconnect_admin(self, websocket: WebSocket):
         if websocket in self.admin_connections:
             self.admin_connections.remove(websocket)
         print(
-            f"🛡️ Admin disconnected from Live Chat. (Remaining: {len(self.admin_connections)})")
+            f"[ADMIN DISCONNECTED] Admin disconnected from Live Chat. (Remaining: {len(self.admin_connections)})")
 
     # --- ROUTING & MESSAGING METHODS ---
 

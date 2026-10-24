@@ -1,8 +1,11 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import type {
   UserEnquiry,
   EnquiryStatus,
   SSEConnectionStatus,
+  ChatSessionThread,
+  ChatMessage,
+  UserPresenceEvent,
 } from './types';
 import { api } from './services/api';
 import { Header } from './components/Header';
@@ -16,6 +19,7 @@ import { CompanyDirectory } from './components/CompanyDirectory';
 import { ContactsDirectory } from './components/ContactsDirectory';
 import { SettingsModal } from './components/SettingsModal';
 import { OverviewView } from './components/OverviewView';
+import { LiveChatView } from './components/LiveChatView';
 import { ToastContainer } from './components/Toast';
 import type { ToastMessage, ToastType } from './components/Toast';
 import { AlertCircle, RotateCw } from 'lucide-react';
@@ -55,6 +59,18 @@ export function App() {
 
   // Toast notifications
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+
+  // Live Support Chat State
+  const [chatThreads, setChatThreads] = useState<ChatSessionThread[]>([]);
+  const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
+  const [chatWsStatus, setChatWsStatus] = useState<'connecting' | 'connected' | 'error' | 'disconnected'>('disconnected');
+  const [isChatLoading, setIsChatLoading] = useState(false);
+  const chatSenderRef = useRef<((toEmail: string | null, message: string) => boolean) | null>(null);
+
+  // Total unread chat messages across all threads
+  const totalUnreadChat = useMemo(() => {
+    return chatThreads.reduce((sum, t) => sum + (t.unread_count || 0), 0);
+  }, [chatThreads]);
 
   const addToast = useCallback((message: string, type: ToastType = 'info') => {
     const id = Date.now().toString() + Math.random().toString().slice(2, 6);
@@ -184,6 +200,131 @@ export function App() {
       unsubscribe();
     };
   }, [addToast, configVersion]);
+
+  // Load chat conversations from backend SQLite tables
+  const loadChatConversations = useCallback(async () => {
+    setIsChatLoading(true);
+    try {
+      const res = await api.getConversations();
+      if (res && res.threads) {
+        setChatThreads(res.threads);
+        setOnlineUsers(res.online_users || []);
+      }
+    } catch (err) {
+      console.warn('Failed to load chat conversations:', err);
+    } finally {
+      setIsChatLoading(false);
+    }
+  }, []);
+
+  // Fetch initial chat data
+  useEffect(() => {
+    loadChatConversations();
+  }, [loadChatConversations, configVersion]);
+
+  // Connect Admin Chat WebSocket for live presence and messaging
+  useEffect(() => {
+    const wsClient = api.connectAdminChatWS(
+      // onMessage
+      (msg: ChatMessage) => {
+        setChatThreads((prev) => {
+          if (msg.is_broadcast) {
+            // Append broadcast message to all threads
+            return prev.map((t) => ({
+              ...t,
+              messages: [...t.messages, msg],
+              last_active_at: msg.created_at,
+            }));
+          }
+
+          const targetEmail = msg.user_email.toLowerCase();
+          const threadExists = prev.some((t) => t.corporate_email.toLowerCase() === targetEmail);
+
+          if (!threadExists) {
+            // New visitor conversation! Reload threads
+            loadChatConversations();
+            return prev;
+          }
+
+          return prev.map((t) => {
+            if (t.corporate_email.toLowerCase() === targetEmail) {
+              const isUserSender = msg.sender_role === 'user';
+              return {
+                ...t,
+                messages: [...t.messages, msg],
+                last_active_at: msg.created_at,
+                unread_count: isUserSender ? t.unread_count + 1 : t.unread_count,
+              };
+            }
+            return t;
+          });
+        });
+
+        // Show toast alert for incoming visitor message
+        if (msg.sender_role === 'user') {
+          addToast(
+            `💬 Message from ${msg.user_name || msg.user_email}: "${msg.message.length > 35 ? msg.message.slice(0, 35) + '...' : msg.message}"`,
+            'info'
+          );
+        }
+      },
+      // onPresence
+      (presence: UserPresenceEvent) => {
+        const onlineList = presence.online_users || [];
+        setOnlineUsers(onlineList);
+        setChatThreads((prev) =>
+          prev.map((t) => ({
+            ...t,
+            is_online: onlineList.includes(t.corporate_email.toLowerCase()),
+          }))
+        );
+      },
+      // onStatusChange
+      (status) => {
+        setChatWsStatus(status);
+      }
+    );
+
+    chatSenderRef.current = wsClient.send;
+
+    return () => {
+      wsClient.close();
+      chatSenderRef.current = null;
+    };
+  }, [addToast, loadChatConversations, configVersion]);
+
+  // Send Chat message action (1-on-1 reply or global broadcast)
+  const handleSendChatMessage = useCallback((toEmail: string | null, message: string): boolean => {
+    if (!chatSenderRef.current) {
+      addToast('Chat server is reconnecting. Please try again.', 'error');
+      return false;
+    }
+    const success = chatSenderRef.current(toEmail, message);
+    if (!success) {
+      addToast('Failed to deliver message via WebSocket.', 'error');
+      return false;
+    }
+    if (toEmail === null) {
+      addToast('📢 Global announcement broadcast to all visitors!', 'success');
+    }
+    return true;
+  }, [addToast]);
+
+  // Mark chat as read
+  const handleMarkChatRead = useCallback(async (email: string) => {
+    setChatThreads((prev) =>
+      prev.map((t) =>
+        t.corporate_email.toLowerCase() === email.toLowerCase()
+          ? { ...t, unread_count: 0 }
+          : t
+      )
+    );
+    try {
+      await api.markMessagesRead(email);
+    } catch (err) {
+      console.warn('Failed to mark messages as read on backend:', err);
+    }
+  }, []);
 
   // Handle Enquiry Status Update (Calls PATCH /admin/update/status/{id})
   const handleUpdateStatus = async (id: number, newStatus: EnquiryStatus) => {
@@ -402,6 +543,7 @@ export function App() {
           pendingCount={pendingCount}
           completedCount={completedCount}
           totalCompanies={companies.length}
+          unreadChatCount={totalUnreadChat}
         />
 
         {/* Main Content Area */}
@@ -528,6 +670,19 @@ export function App() {
                 addToast(`Filtered by ${type}: ${val}`, 'info');
               }}
               onCopyText={handleCopyText}
+            />
+          )}
+
+          {/* Live Support Chat Tab */}
+          {activeTab === 'chat' && (
+            <LiveChatView
+              threads={chatThreads}
+              onlineUsers={onlineUsers}
+              onSendMessage={handleSendChatMessage}
+              onMarkRead={handleMarkChatRead}
+              wsStatus={chatWsStatus}
+              onRefresh={loadChatConversations}
+              isLoading={isChatLoading}
             />
           )}
 

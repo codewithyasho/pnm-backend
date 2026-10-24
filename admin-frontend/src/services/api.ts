@@ -8,6 +8,9 @@ import type {
   FilterParams,
   EnquiryStatus,
   SSEConnectionStatus,
+  ConversationsResponse,
+  ChatMessage,
+  UserPresenceEvent,
 } from '../types';
 
 export const DEFAULT_API_BASE = 'https://yashodeep2006-finewavetech-api.hf.space';
@@ -23,10 +26,11 @@ export const setStoredApiKey = (key: string): void => {
 
 export const getStoredApiBase = (): string => {
   const stored = localStorage.getItem('pnm_admin_api_base');
-  if (!stored || stored === 'http://127.0.0.1:8000' || stored === 'http://localhost:8000') {
-    return DEFAULT_API_BASE;
+  if (stored) return stored;
+  if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+    return 'http://127.0.0.1:8000';
   }
-  return stored;
+  return DEFAULT_API_BASE;
 };
 
 export const setStoredApiBase = (url: string): void => {
@@ -35,6 +39,10 @@ export const setStoredApiBase = (url: string): void => {
     cleaned = cleaned.slice(0, -1);
   }
   localStorage.setItem('pnm_admin_api_base', cleaned);
+};
+
+export const getWsBaseUrl = (httpUrl: string): string => {
+  return httpUrl.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:');
 };
 
 const makeRequest = async <T>(
@@ -262,6 +270,94 @@ export const api = {
       if (reconnectTimeout) clearTimeout(reconnectTimeout);
       abortController.abort();
       onStatusChange?.('disconnected');
+    };
+  },
+
+  getConversations: async (): Promise<ConversationsResponse> => {
+    return makeRequest<ConversationsResponse>('/admin/chat/conversations');
+  },
+
+  markMessagesRead: async (email: string): Promise<{ status: string; marked_read: number }> => {
+    return makeRequest<{ status: string; marked_read: number }>(`/admin/chat/read/${encodeURIComponent(email)}`, {
+      method: 'PATCH',
+    });
+  },
+
+  connectAdminChatWS: (
+    onMessage: (msg: ChatMessage) => void,
+    onPresence: (presence: UserPresenceEvent) => void,
+    onStatusChange?: (status: 'connecting' | 'connected' | 'error' | 'disconnected') => void
+  ): {
+    send: (toEmail: string | null, message: string) => boolean;
+    close: () => void;
+  } => {
+    const base = getStoredApiBase();
+    const apiKey = getStoredApiKey();
+    const wsBase = getWsBaseUrl(base);
+    const wsUrl = `${wsBase}/admin/ws/admin?token=${encodeURIComponent(apiKey)}`;
+
+    let ws: WebSocket | null = null;
+    let isClosed = false;
+    let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+
+    const connect = () => {
+      if (isClosed) return;
+      onStatusChange?.('connecting');
+
+      try {
+        ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+          onStatusChange?.('connected');
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const packet = JSON.parse(event.data);
+            if (packet.event === 'chat_message' && packet.data) {
+              onMessage(packet.data);
+            } else if (packet.event === 'user_presence') {
+              onPresence(packet as UserPresenceEvent);
+            }
+          } catch (err) {
+            console.error('[Admin Chat WS] Error parsing packet:', err);
+          }
+        };
+
+        ws.onerror = (err) => {
+          console.warn('[Admin Chat WS] Error:', err);
+          onStatusChange?.('error');
+        };
+
+        ws.onclose = () => {
+          onStatusChange?.('disconnected');
+          if (!isClosed) {
+            reconnectTimeout = setTimeout(() => {
+              if (!isClosed) connect();
+            }, 3000);
+          }
+        };
+      } catch (err) {
+        console.error('[Admin Chat WS] Failed to initialize WebSocket:', err);
+        onStatusChange?.('error');
+      }
+    };
+
+    connect();
+
+    return {
+      send: (toEmail: string | null, message: string): boolean => {
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+          return false;
+        }
+        ws.send(JSON.stringify({ to_email: toEmail, message }));
+        return true;
+      },
+      close: () => {
+        isClosed = true;
+        if (reconnectTimeout) clearTimeout(reconnectTimeout);
+        if (ws) ws.close();
+      },
     };
   },
 };

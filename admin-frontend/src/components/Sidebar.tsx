@@ -9,9 +9,10 @@ import {
   ExternalLink,
   Clock,
   CheckCircle,
+  MessageSquare,
 } from 'lucide-react';
 
-export type ActiveTab = 'overview' | 'enquiries' | 'companies' | 'contacts' | 'settings';
+export type ActiveTab = 'overview' | 'enquiries' | 'companies' | 'contacts' | 'chat' | 'settings';
 
 interface SidebarProps {
   activeTab: ActiveTab;
@@ -21,6 +22,7 @@ interface SidebarProps {
   pendingCount: number;
   completedCount: number;
   totalCompanies: number;
+  unreadChatCount?: number;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -31,6 +33,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   pendingCount,
   completedCount,
   totalCompanies,
+  unreadChatCount = 0,
 }) => {
   const navItems: {
     id: ActiveTab;
@@ -50,6 +53,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: <Users className="w-5 h-5" />,
       badge: pendingCount > 0 ? `${pendingCount} pending` : undefined,
       badgeColor: 'bg-amber-100 text-amber-800 border-amber-200',
+    },
+    {
+      id: 'chat',
+      label: 'Live Support Chat',
+      icon: <MessageSquare className="w-5 h-5" />,
+      badge: unreadChatCount > 0 ? `${unreadChatCount} new` : undefined,
+      badgeColor: 'bg-emerald-100 text-emerald-800 border-emerald-200 font-bold animate-pulse',
     },
     {
       id: 'companies',

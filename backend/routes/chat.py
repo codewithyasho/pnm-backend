@@ -41,7 +41,7 @@ def get_user_chat_history(
         session.add(chat_sess)
         session.commit()
         session.refresh(chat_sess)
-        print(f"📝 New user registered: {email}")
+        print(f"[NEW USER] New user registered: {email}")
 
     else:
         # Returning user -> Verify their session_token matches so nobody can hijack their chat!

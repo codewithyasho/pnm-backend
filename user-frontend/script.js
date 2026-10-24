@@ -420,8 +420,15 @@ document.addEventListener("DOMContentLoaded", () => {
   const toastMsg = document.getElementById("toastMsg");
   const toastText = document.getElementById("toastText");
 
-  // Configurable API base URL: defaults to Hugging Face Spaces production backend
-  const API_BASE_URL = window.PNM_API_BASE || "https://yashodeep2006-finewavetech-api.hf.space";
+  // Configurable API base URL: defaults to local backend when on localhost/127.0.0.1/file, or Hugging Face Spaces production
+  const API_BASE_URL =
+    window.PNM_API_BASE ||
+    localStorage.getItem("pnm_api_base") ||
+    (window.location.hostname === "localhost" ||
+    window.location.hostname === "127.0.0.1" ||
+    window.location.protocol === "file:"
+      ? "http://127.0.0.1:8000"
+      : "https://yashodeep2006-finewavetech-api.hf.space");
 
   let toastTimer = null;
   function showToast(message, type = "success") {
@@ -646,4 +653,379 @@ document.addEventListener("DOMContentLoaded", () => {
       window.scrollTo({ top: 0, behavior: "smooth" });
     });
   }
+
+  /* ==========================================================================
+     10. Real-Time Visitor Live Support Chat Widget (WebSocket & SQLite History)
+     ========================================================================== */
+  const chatWidget = document.getElementById("pnmChatWidget");
+  const chatLauncher = document.getElementById("pnmChatLauncher");
+  const chatWindow = document.getElementById("pnmChatWindow");
+  const chatMinimizeBtn = document.getElementById("pnmChatMinimizeBtn");
+  const chatBadge = document.getElementById("pnmChatBadge");
+  const chatStatus = document.getElementById("pnmChatStatus");
+  const statusText = document.getElementById("pnmStatusText");
+
+  // Views
+  const chatPreForm = document.getElementById("pnmChatPreForm");
+  const preChatFormEl = document.getElementById("pnmPreChatForm");
+  const chatNameInput = document.getElementById("pnmChatNameInput");
+  const chatEmailInput = document.getElementById("pnmChatEmailInput");
+
+  const chatThreadView = document.getElementById("pnmChatThreadView");
+  const chatCurrentUserName = document.getElementById("pnmChatCurrentUserName");
+  const chatResetBtn = document.getElementById("pnmChatResetBtn");
+  const chatMessagesList = document.getElementById("pnmChatMessages");
+  const chatInputForm = document.getElementById("pnmChatInputForm");
+  const chatMessageInput = document.getElementById("pnmChatMessageInput");
+
+  let chatSocket = null;
+  let chatReconnectTimer = null;
+  let isIntentionallyClosed = false;
+  let unreadChatCount = 0;
+  const renderedMessageIds = new Set();
+
+  // Helper: Persistent UUID Session Token
+  function getOrCreateChatToken() {
+    let token = localStorage.getItem("pnm_chat_token");
+    if (!token) {
+      if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+        token = crypto.randomUUID();
+      } else {
+        token = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+          const r = (Math.random() * 16) | 0;
+          const v = c === "x" ? r : (r & 0x3) | 0x8;
+          return v.toString(16);
+        });
+      }
+      localStorage.setItem("pnm_chat_token", token);
+    }
+    return token;
+  }
+
+  function getWsBaseUrl(httpUrl) {
+    return httpUrl.replace(/^http:/, "ws:").replace(/^https:/, "wss:");
+  }
+
+  function formatTime(isoString) {
+    if (!isoString) return "";
+    try {
+      const d = new Date(isoString);
+      return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    } catch {
+      return "";
+    }
+  }
+
+  function setStatusIndicator(isOnline, customText) {
+    if (!chatStatus || !statusText) return;
+    if (isOnline) {
+      chatStatus.classList.remove("disconnected");
+      statusText.textContent = customText || "Online • Ready to help";
+    } else {
+      chatStatus.classList.add("disconnected");
+      statusText.textContent = customText || "Connecting...";
+    }
+  }
+
+  function updateUnreadBadge(count) {
+    unreadChatCount = count;
+    if (!chatBadge) return;
+    if (unreadChatCount > 0) {
+      chatBadge.textContent = unreadChatCount > 9 ? "9+" : unreadChatCount.toString();
+      chatBadge.style.display = "flex";
+    } else {
+      chatBadge.style.display = "none";
+    }
+  }
+
+  function scrollMessagesToBottom(smooth = true) {
+    if (!chatMessagesList) return;
+    chatMessagesList.scrollTo({
+      top: chatMessagesList.scrollHeight,
+      behavior: smooth ? "smooth" : "auto",
+    });
+  }
+
+  // Render a chat message bubble
+  function renderMessageItem(msg, scroll = true) {
+    if (!chatMessagesList) return;
+    if (msg.id && renderedMessageIds.has(msg.id)) return;
+    if (msg.id) renderedMessageIds.add(msg.id);
+
+    const msgEl = document.createElement("div");
+    const timeStr = formatTime(msg.created_at);
+
+    if (msg.is_broadcast) {
+      // Broadcast Announcement
+      msgEl.className = "chat-msg chat-msg-broadcast";
+      msgEl.innerHTML = `
+        <div class="msg-bubble">
+          <div class="broadcast-tag">📢 Official Announcement</div>
+          <div>${escapeHtml(msg.message)}</div>
+          <div class="msg-meta">${timeStr}</div>
+        </div>
+      `;
+    } else if (msg.sender_role === "user") {
+      // User Message (Right)
+      msgEl.className = "chat-msg chat-msg-user";
+      msgEl.innerHTML = `
+        <div class="msg-bubble">${escapeHtml(msg.message)}</div>
+        <div class="msg-meta">${timeStr}</div>
+      `;
+    } else {
+      // Admin / Support Message (Left)
+      msgEl.className = "chat-msg chat-msg-admin";
+      msgEl.innerHTML = `
+        <div class="msg-author">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          PNM Support
+        </div>
+        <div class="msg-bubble">${escapeHtml(msg.message)}</div>
+        <div class="msg-meta">${timeStr}</div>
+      `;
+    }
+
+    chatMessagesList.appendChild(msgEl);
+    if (scroll) scrollMessagesToBottom(true);
+  }
+
+  function escapeHtml(str) {
+    if (!str) return "";
+    return str
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  // Fetch past message history from SQLite via REST endpoint
+  async function loadChatHistory(email, name, token) {
+    try {
+      const url = `${API_BASE_URL}/admin/chat/user/history?email=${encodeURIComponent(email)}&name=${encodeURIComponent(name)}&session_token=${encodeURIComponent(token)}`;
+      const res = await fetch(url);
+      if (!res.ok) {
+        if (res.status === 403) {
+          throw new Error("This email is already registered in an active chat session on another device.");
+        }
+        throw new Error(`Failed to load history (${res.status})`);
+      }
+      const data = await res.json();
+      if (data && Array.isArray(data.messages)) {
+        if (data.messages.length > 0 && chatMessagesList) {
+          chatMessagesList.innerHTML = "";
+          renderedMessageIds.clear();
+        }
+        data.messages.forEach((m) => renderMessageItem(m, false));
+        scrollMessagesToBottom(false);
+      }
+    } catch (err) {
+      console.warn("Could not load past chat history:", err);
+    }
+  }
+
+  // Connect Visitor WebSocket
+  function connectChatWebSocket(email, name, token) {
+    if (chatReconnectTimer) {
+      clearTimeout(chatReconnectTimer);
+      chatReconnectTimer = null;
+    }
+
+    if (chatSocket && (chatSocket.readyState === WebSocket.OPEN || chatSocket.readyState === WebSocket.CONNECTING)) {
+      return;
+    }
+
+    isIntentionallyClosed = false;
+    setStatusIndicator(false, "Connecting to live support...");
+
+    const wsBase = getWsBaseUrl(API_BASE_URL);
+    const wsUrl = `${wsBase}/admin/ws/user?email=${encodeURIComponent(email)}&name=${encodeURIComponent(name)}&session_token=${encodeURIComponent(token)}`;
+
+    try {
+      chatSocket = new WebSocket(wsUrl);
+
+      chatSocket.onopen = () => {
+        setStatusIndicator(true, "Online • Ready to help");
+      };
+
+      chatSocket.onmessage = (event) => {
+        try {
+          const packet = JSON.parse(event.data);
+          if (packet.event === "chat_message" && packet.data) {
+            renderMessageItem(packet.data, true);
+
+            // If chat window is closed, increment unread badge for admin/broadcast messages
+            const isWidgetOpen = chatWidget && chatWidget.classList.contains("open");
+            if (!isWidgetOpen && packet.data.sender_role !== "user") {
+              updateUnreadBadge(unreadChatCount + 1);
+            }
+          }
+        } catch (err) {
+          console.error("Error processing incoming chat packet:", err);
+        }
+      };
+
+      chatSocket.onerror = (err) => {
+        console.warn("Visitor chat WebSocket error:", err);
+        setStatusIndicator(false, "Reconnecting...");
+      };
+
+      chatSocket.onclose = () => {
+        setStatusIndicator(false, "Disconnected");
+        if (!isIntentionallyClosed) {
+          chatReconnectTimer = setTimeout(() => {
+            const curEmail = localStorage.getItem("pnm_chat_email");
+            const curName = localStorage.getItem("pnm_chat_name");
+            const curToken = localStorage.getItem("pnm_chat_token");
+            if (curEmail && curName && curToken) {
+              connectChatWebSocket(curEmail, curName, curToken);
+            }
+          }, 3000);
+        }
+      };
+    } catch (err) {
+      console.error("Failed to establish chat WebSocket:", err);
+      setStatusIndicator(false, "Connection error");
+    }
+  }
+
+  // Send a message via WebSocket
+  function sendChatMessage(text) {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+
+    if (!chatSocket || chatSocket.readyState !== WebSocket.OPEN) {
+      showToast("Chat connection is reconnecting, please try again in a moment.", "error");
+      return;
+    }
+
+    try {
+      chatSocket.send(JSON.stringify({ message: trimmed }));
+      if (chatMessageInput) chatMessageInput.value = "";
+    } catch (err) {
+      console.error("Failed to send message:", err);
+      showToast("Failed to send message. Please check your internet connection.", "error");
+    }
+  }
+
+  // Initialize or check stored user session
+  function initChatSession() {
+    const token = getOrCreateChatToken();
+    const storedEmail = localStorage.getItem("pnm_chat_email");
+    const storedName = localStorage.getItem("pnm_chat_name");
+
+    if (storedEmail && storedName) {
+      if (chatPreForm) chatPreForm.style.display = "none";
+      if (chatThreadView) chatThreadView.style.display = "flex";
+      if (chatCurrentUserName) chatCurrentUserName.textContent = storedName;
+
+      loadChatHistory(storedEmail, storedName, token);
+      connectChatWebSocket(storedEmail, storedName, token);
+    } else {
+      if (chatPreForm) chatPreForm.style.display = "flex";
+      if (chatThreadView) chatThreadView.style.display = "none";
+    }
+  }
+
+  // Pre-chat identification form submission
+  if (preChatFormEl) {
+    preChatFormEl.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const name = (chatNameInput?.value || "").trim();
+      const email = (chatEmailInput?.value || "").trim().toLowerCase();
+
+      if (name.length < 2) {
+        showToast("Please enter your full name (at least 2 letters).", "error");
+        chatNameInput?.focus();
+        return;
+      }
+
+      if (!email || !email.includes("@") || !email.includes(".")) {
+        showToast("Please enter a valid corporate email address.", "error");
+        chatEmailInput?.focus();
+        return;
+      }
+
+      const token = getOrCreateChatToken();
+      localStorage.setItem("pnm_chat_name", name);
+      localStorage.setItem("pnm_chat_email", email);
+
+      if (chatCurrentUserName) chatCurrentUserName.textContent = name;
+      if (chatPreForm) chatPreForm.style.display = "none";
+      if (chatThreadView) chatThreadView.style.display = "flex";
+
+      loadChatHistory(email, name, token);
+      connectChatWebSocket(email, name, token);
+
+      setTimeout(() => {
+        if (chatMessageInput) chatMessageInput.focus();
+      }, 100);
+    });
+  }
+
+  // Message composer submission
+  if (chatInputForm) {
+    chatInputForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      if (chatMessageInput) {
+        sendChatMessage(chatMessageInput.value);
+      }
+    });
+  }
+
+  // Reset/Switch Identity
+  if (chatResetBtn) {
+    chatResetBtn.addEventListener("click", () => {
+      if (confirm("Would you like to switch to a different name/email for this chat?")) {
+        isIntentionallyClosed = true;
+        if (chatSocket) chatSocket.close();
+        localStorage.removeItem("pnm_chat_name");
+        localStorage.removeItem("pnm_chat_email");
+        renderedMessageIds.clear();
+        if (chatMessagesList) {
+          chatMessagesList.innerHTML = `
+            <div class="chat-msg chat-msg-system">
+              <p>Welcome! Our team is online and ready to assist you. Send a message below to start.</p>
+            </div>
+          `;
+        }
+        if (chatPreForm) chatPreForm.style.display = "flex";
+        if (chatThreadView) chatThreadView.style.display = "none";
+        setStatusIndicator(true, "Online • Ready to help");
+      }
+    });
+  }
+
+  // Toggle Chat Window
+  function toggleChatWidget() {
+    if (!chatWidget) return;
+    const isOpen = chatWidget.classList.contains("open");
+    if (isOpen) {
+      chatWidget.classList.remove("open");
+      chatWindow?.setAttribute("aria-hidden", "true");
+    } else {
+      chatWidget.classList.add("open");
+      chatWindow?.setAttribute("aria-hidden", "false");
+      updateUnreadBadge(0);
+      scrollMessagesToBottom(false);
+
+      const storedEmail = localStorage.getItem("pnm_chat_email");
+      if (storedEmail) {
+        setTimeout(() => chatMessageInput?.focus(), 150);
+      } else {
+        setTimeout(() => chatNameInput?.focus(), 150);
+      }
+    }
+  }
+
+  if (chatLauncher) {
+    chatLauncher.addEventListener("click", toggleChatWidget);
+  }
+
+  if (chatMinimizeBtn) {
+    chatMinimizeBtn.addEventListener("click", toggleChatWidget);
+  }
+
+  // Kick off initial chat check on page load
+  initChatSession();
 });
