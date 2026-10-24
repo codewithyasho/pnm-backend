@@ -11,6 +11,7 @@ import {
   Check,
   Wifi,
   WifiOff,
+  ArrowLeft,
 } from 'lucide-react';
 import type { ChatSessionThread } from '../types';
 
@@ -42,51 +43,79 @@ export const LiveChatView: React.FC<LiveChatViewProps> = ({
   const [copiedEmail, setCopiedEmail] = useState(false);
   const [isSending, setIsSending] = useState(false);
 
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // Auto-select first thread if none is selected and threads are available
+  // Auto-select first thread on desktop if none selected yet and threads exist
   useEffect(() => {
-    if (!selectedEmail && threads.length > 0) {
-      setSelectedEmail(threads[0].corporate_email);
+    if (!selectedEmail && threads.length > 0 && typeof window !== 'undefined' && window.innerWidth >= 768) {
+      const firstEmail = threads[0].corporate_email;
+      setSelectedEmail(firstEmail);
       if (threads[0].unread_count > 0) {
-        onMarkRead(threads[0].corporate_email);
+        onMarkRead(firstEmail);
       }
     }
   }, [threads, selectedEmail, onMarkRead]);
 
   // Selected thread data
   const currentThread = useMemo(() => {
-    return threads.find((t) => t.corporate_email.toLowerCase() === (selectedEmail || '').toLowerCase()) || null;
+    if (!selectedEmail) return null;
+    return (
+      threads.find(
+        (t) => (t.corporate_email || '').toLowerCase() === selectedEmail.toLowerCase()
+      ) || null
+    );
   }, [threads, selectedEmail]);
 
-  // Scroll to bottom whenever messages update
-  useEffect(() => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+  // Helper to scroll ONLY the messages container (never outer containers or the page)
+  const scrollToBottom = (smooth = true) => {
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTo({
+        top: messagesContainerRef.current.scrollHeight,
+        behavior: smooth ? 'smooth' : 'auto',
+      });
     }
-  }, [currentThread?.messages]);
+  };
+
+  // Scroll to bottom whenever selected conversation changes (instant)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      scrollToBottom(false);
+    }, 30);
+    return () => clearTimeout(timer);
+  }, [selectedEmail]);
+
+  // Scroll to bottom smoothly when new messages arrive in the active conversation
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      scrollToBottom(true);
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [currentThread?.messages?.length]);
 
   // Handle clicking a thread
   const handleSelectThread = (email: string) => {
     setSelectedEmail(email);
-    const target = threads.find((t) => t.corporate_email.toLowerCase() === email.toLowerCase());
+    const target = threads.find((t) => (t.corporate_email || '').toLowerCase() === email.toLowerCase());
     if (target && target.unread_count > 0) {
       onMarkRead(email);
     }
+    // Prevent focus from scrolling any parent containers
     setTimeout(() => {
-      inputRef.current?.focus();
+      inputRef.current?.focus({ preventScroll: true });
     }, 100);
   };
 
   // Filter threads
   const filteredThreads = useMemo(() => {
     return threads.filter((t) => {
+      const email = t.corporate_email || '';
+      const name = t.full_name || '';
       const matchesSearch =
-        t.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        t.corporate_email.toLowerCase().includes(searchQuery.toLowerCase());
+        name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        email.toLowerCase().includes(searchQuery.toLowerCase());
 
-      const isOnline = onlineUsers.includes(t.corporate_email.toLowerCase()) || t.is_online;
+      const isOnline = onlineUsers.includes(email.toLowerCase()) || t.is_online;
 
       if (!matchesSearch) return false;
       if (filterType === 'online') return isOnline;
@@ -98,7 +127,7 @@ export const LiveChatView: React.FC<LiveChatViewProps> = ({
   // Send 1-on-1 Reply
   const handleSendReply = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!currentThread || !replyText.trim()) return;
+    if (!currentThread || !replyText.trim() || isSending) return;
 
     setIsSending(true);
     const success = onSendMessage(currentThread.corporate_email, replyText.trim());
@@ -106,7 +135,7 @@ export const LiveChatView: React.FC<LiveChatViewProps> = ({
       setReplyText('');
     }
     setIsSending(false);
-    setTimeout(() => inputRef.current?.focus(), 50);
+    setTimeout(() => inputRef.current?.focus({ preventScroll: true }), 50);
   };
 
   // Handle Enter key (Shift+Enter for newline)
@@ -159,7 +188,7 @@ export const LiveChatView: React.FC<LiveChatViewProps> = ({
 
   const onlineCount = useMemo(() => {
     return threads.filter(
-      (t) => onlineUsers.includes(t.corporate_email.toLowerCase()) || t.is_online
+      (t) => onlineUsers.includes((t.corporate_email || '').toLowerCase()) || t.is_online
     ).length;
   }, [threads, onlineUsers]);
 
@@ -220,12 +249,17 @@ export const LiveChatView: React.FC<LiveChatViewProps> = ({
         </div>
       </div>
 
-      {/* Main Two-Pane Chat Container */}
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden grid grid-cols-1 lg:grid-cols-12 min-h-[620px] max-h-[750px]">
-        {/* LEFT COLUMN: Thread List (4 Cols) */}
-        <div className="lg:col-span-4 border-r border-slate-200 flex flex-col bg-slate-50/50">
+      {/* Main Two-Pane Chat Container (Flexbox side-by-side with responsive master-detail) */}
+      <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden flex flex-col md:flex-row h-[700px] max-h-[calc(100vh-200px)] min-h-[560px]">
+        
+        {/* LEFT COLUMN: Thread List */}
+        <div
+          className={`w-full md:w-80 lg:w-96 shrink-0 flex flex-col h-full border-r border-slate-200 bg-slate-50/50 ${
+            selectedEmail ? 'hidden md:flex' : 'flex'
+          }`}
+        >
           {/* Thread List Header */}
-          <div className="p-4 border-b border-slate-200 space-y-3 bg-white">
+          <div className="p-4 border-b border-slate-200 space-y-3 bg-white shrink-0">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <MessageSquare className="w-4 h-4 text-indigo-600" />
@@ -255,7 +289,7 @@ export const LiveChatView: React.FC<LiveChatViewProps> = ({
                 onClick={() => setFilterType('all')}
                 className={`px-2.5 py-1 rounded-lg font-semibold transition-colors ${
                   filterType === 'all'
-                    ? 'bg-indigo-600 text-white'
+                    ? 'bg-indigo-600 text-white shadow-xs'
                     : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                 }`}
               >
@@ -265,7 +299,7 @@ export const LiveChatView: React.FC<LiveChatViewProps> = ({
                 onClick={() => setFilterType('online')}
                 className={`px-2.5 py-1 rounded-lg font-semibold transition-colors ${
                   filterType === 'online'
-                    ? 'bg-emerald-600 text-white'
+                    ? 'bg-emerald-600 text-white shadow-xs'
                     : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                 }`}
               >
@@ -275,7 +309,7 @@ export const LiveChatView: React.FC<LiveChatViewProps> = ({
                 onClick={() => setFilterType('unread')}
                 className={`px-2.5 py-1 rounded-lg font-semibold transition-colors ${
                   filterType === 'unread'
-                    ? 'bg-amber-600 text-white'
+                    ? 'bg-amber-600 text-white shadow-xs'
                     : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                 }`}
               >
@@ -285,25 +319,31 @@ export const LiveChatView: React.FC<LiveChatViewProps> = ({
           </div>
 
           {/* Threads Scroll List */}
-          <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
+          <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-slate-100">
             {filteredThreads.length === 0 ? (
               <div className="p-8 text-center text-slate-400 text-xs">
                 {searchQuery ? 'No visitors match your search' : 'No visitor chat sessions yet'}
               </div>
             ) : (
               filteredThreads.map((thread) => {
+                const threadEmail = thread.corporate_email || '';
                 const isSelected =
-                  selectedEmail?.toLowerCase() === thread.corporate_email.toLowerCase();
+                  (selectedEmail || '').toLowerCase() === threadEmail.toLowerCase();
                 const isOnline =
-                  onlineUsers.includes(thread.corporate_email.toLowerCase()) || thread.is_online;
-                const lastMsg = thread.messages[thread.messages.length - 1];
+                  onlineUsers.includes(threadEmail.toLowerCase()) || thread.is_online;
+                const lastMsg = thread.messages && thread.messages.length > 0
+                  ? thread.messages[thread.messages.length - 1]
+                  : null;
 
                 return (
                   <button
-                    key={thread.corporate_email}
-                    onClick={() => handleSelectThread(thread.corporate_email)}
-                    className={`w-full p-4 text-left transition-all flex items-start gap-3 hover:bg-slate-100/80 ${
-                      isSelected ? 'bg-indigo-50/80 border-l-4 border-l-indigo-600' : ''
+                    key={threadEmail}
+                    type="button"
+                    onClick={() => handleSelectThread(threadEmail)}
+                    className={`w-full p-4 text-left transition-all flex items-start gap-3 hover:bg-slate-100/80 cursor-pointer ${
+                      isSelected
+                        ? 'bg-indigo-50/90 border-l-4 border-l-indigo-600 shadow-xs'
+                        : 'border-l-4 border-l-transparent'
                     }`}
                   >
                     {/* User Avatar with Presence Dot */}
@@ -322,7 +362,7 @@ export const LiveChatView: React.FC<LiveChatViewProps> = ({
                     {/* Thread Details */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-1">
-                        <span className="font-bold text-slate-900 text-xs truncate">
+                        <span className={`text-xs truncate ${isSelected ? 'font-black text-indigo-950' : 'font-bold text-slate-900'}`}>
                           {thread.full_name || 'Anonymous Visitor'}
                         </span>
                         {lastMsg && (
@@ -332,7 +372,7 @@ export const LiveChatView: React.FC<LiveChatViewProps> = ({
                         )}
                       </div>
                       <div className="text-[11px] text-slate-500 truncate mb-1">
-                        {thread.corporate_email}
+                        {threadEmail}
                       </div>
 
                       {/* Last message preview */}
@@ -362,24 +402,38 @@ export const LiveChatView: React.FC<LiveChatViewProps> = ({
           </div>
         </div>
 
-        {/* RIGHT COLUMN: Active Chat Pane (8 Cols) */}
-        <div className="lg:col-span-8 flex flex-col h-full bg-white">
+        {/* RIGHT COLUMN: Active Chat Pane */}
+        <div
+          className={`flex-1 min-w-0 flex flex-col h-full bg-white ${
+            selectedEmail ? 'flex' : 'hidden md:flex'
+          }`}
+        >
           {currentThread ? (
             <>
-              {/* Active Conversation Header */}
-              <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-white shrink-0">
-                <div className="flex items-center gap-3">
+              {/* Active Conversation Header (Sticky and always visible) */}
+              <div className="p-3.5 sm:p-4 border-b border-slate-200 flex items-center justify-between bg-white shrink-0 z-10">
+                <div className="flex items-center gap-3 min-w-0">
+                  {/* Mobile Back Button to return to thread list */}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedEmail(null)}
+                    className="md:hidden p-1.5 -ml-1 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors"
+                    title="Back to all visitor threads"
+                  >
+                    <ArrowLeft className="w-5 h-5" />
+                  </button>
+
                   <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-700 font-bold text-sm flex items-center justify-center shrink-0">
                     {currentThread.full_name ? currentThread.full_name.charAt(0).toUpperCase() : 'U'}
                   </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h4 className="font-bold text-slate-900 text-sm">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h4 className="font-bold text-slate-900 text-sm truncate">
                         {currentThread.full_name}
                       </h4>
                       <span
-                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                          onlineUsers.includes(currentThread.corporate_email.toLowerCase()) ||
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold shrink-0 ${
+                          onlineUsers.includes((currentThread.corporate_email || '').toLowerCase()) ||
                           currentThread.is_online
                             ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                             : 'bg-slate-100 text-slate-600 border border-slate-200'
@@ -387,25 +441,26 @@ export const LiveChatView: React.FC<LiveChatViewProps> = ({
                       >
                         <span
                           className={`w-1.5 h-1.5 rounded-full ${
-                            onlineUsers.includes(currentThread.corporate_email.toLowerCase()) ||
+                            onlineUsers.includes((currentThread.corporate_email || '').toLowerCase()) ||
                             currentThread.is_online
                               ? 'bg-emerald-500'
                               : 'bg-slate-400'
                           }`}
                         />
                         <span>
-                          {onlineUsers.includes(currentThread.corporate_email.toLowerCase()) ||
+                          {onlineUsers.includes((currentThread.corporate_email || '').toLowerCase()) ||
                           currentThread.is_online
                             ? 'Active On Site'
                             : 'Offline'}
                         </span>
                       </span>
                     </div>
-                    <div className="flex items-center gap-2 text-xs text-slate-500">
-                      <span>{currentThread.corporate_email}</span>
+                    <div className="flex items-center gap-2 text-xs text-slate-500 truncate">
+                      <span className="truncate">{currentThread.corporate_email}</span>
                       <button
+                        type="button"
                         onClick={() => handleCopyEmail(currentThread.corporate_email)}
-                        className="text-slate-400 hover:text-slate-700 transition-colors"
+                        className="text-slate-400 hover:text-slate-700 transition-colors shrink-0"
                         title="Copy email address"
                       >
                         {copiedEmail ? (
@@ -418,20 +473,24 @@ export const LiveChatView: React.FC<LiveChatViewProps> = ({
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 shrink-0">
                   <button
+                    type="button"
                     onClick={() => setIsBroadcastModalOpen(true)}
-                    className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs transition-colors"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs transition-colors"
                   >
                     <Megaphone className="w-3.5 h-3.5 text-amber-500" />
-                    <span>Broadcast</span>
+                    <span className="hidden sm:inline">Broadcast</span>
                   </button>
                 </div>
               </div>
 
-              {/* Message History Scroll Area */}
-              <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 bg-slate-50/40">
-                {currentThread.messages.length === 0 ? (
+              {/* Message History Scroll Area (Only this container scrolls) */}
+              <div
+                ref={messagesContainerRef}
+                className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-4 bg-slate-50/40"
+              >
+                {!currentThread.messages || currentThread.messages.length === 0 ? (
                   <div className="h-full flex flex-col items-center justify-center text-center p-8 text-slate-400">
                     <MessageSquare className="w-10 h-10 mb-2 stroke-1 text-slate-300" />
                     <p className="text-sm font-semibold text-slate-600">No messages in this thread yet</p>
@@ -446,7 +505,7 @@ export const LiveChatView: React.FC<LiveChatViewProps> = ({
 
                     if (isBroadcast) {
                       return (
-                        <div key={msg.id || index} className="flex justify-center my-3">
+                        <div key={msg.id || `bc-${index}`} className="flex justify-center my-3">
                           <div className="max-w-md w-full bg-amber-50/90 border border-amber-200 rounded-2xl p-3 shadow-xs">
                             <div className="flex items-center gap-1.5 text-amber-800 font-bold text-xs mb-1">
                               <Megaphone className="w-3.5 h-3.5 text-amber-600" />
@@ -463,7 +522,7 @@ export const LiveChatView: React.FC<LiveChatViewProps> = ({
 
                     return (
                       <div
-                        key={msg.id || index}
+                        key={msg.id || `msg-${index}`}
                         className={`flex flex-col ${isUser ? 'items-start' : 'items-end'}`}
                       >
                         <div className="flex items-center gap-1.5 mb-1 px-1">
@@ -475,7 +534,7 @@ export const LiveChatView: React.FC<LiveChatViewProps> = ({
                           </span>
                         </div>
                         <div
-                          className={`max-w-[78%] rounded-2xl px-4 py-2.5 text-xs sm:text-sm leading-relaxed shadow-xs ${
+                          className={`max-w-[85%] sm:max-w-[78%] rounded-2xl px-4 py-2.5 text-xs sm:text-sm leading-relaxed shadow-xs ${
                             isUser
                               ? 'bg-white text-slate-900 border border-slate-200 rounded-tl-sm'
                               : 'bg-indigo-600 text-white rounded-tr-sm'
@@ -487,13 +546,12 @@ export const LiveChatView: React.FC<LiveChatViewProps> = ({
                     );
                   })
                 )}
-                <div ref={messagesEndRef} />
               </div>
 
               {/* Message Composer */}
               <form
                 onSubmit={handleSendReply}
-                className="p-3 sm:p-4 border-t border-slate-200 bg-white flex items-end gap-2 shrink-0"
+                className="p-3 sm:p-4 border-t border-slate-200 bg-white flex items-end gap-2 shrink-0 z-10"
               >
                 <div className="flex-1 relative">
                   <textarea
@@ -509,7 +567,7 @@ export const LiveChatView: React.FC<LiveChatViewProps> = ({
                 <button
                   type="submit"
                   disabled={!replyText.trim() || isSending}
-                  className="p-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white shadow-md shadow-indigo-600/20 transition-all hover:scale-102 active:scale-98 shrink-0"
+                  className="p-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white shadow-md shadow-indigo-600/20 transition-all hover:scale-102 active:scale-98 shrink-0 cursor-pointer"
                   title="Send message"
                 >
                   <Send className="w-5 h-5" />
@@ -528,8 +586,9 @@ export const LiveChatView: React.FC<LiveChatViewProps> = ({
                 Choose a visitor thread from the sidebar to view their message history and reply in real time.
               </p>
               <button
+                type="button"
                 onClick={() => setIsBroadcastModalOpen(true)}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md transition-all"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md transition-all cursor-pointer"
               >
                 <Megaphone className="w-4 h-4" />
                 <span>Send Global Broadcast</span>
@@ -554,8 +613,9 @@ export const LiveChatView: React.FC<LiveChatViewProps> = ({
                 </div>
               </div>
               <button
+                type="button"
                 onClick={() => setIsBroadcastModalOpen(false)}
-                className="p-1 rounded-lg text-white/80 hover:text-white hover:bg-white/10"
+                className="p-1 rounded-lg text-white/80 hover:text-white hover:bg-white/10 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -584,14 +644,14 @@ export const LiveChatView: React.FC<LiveChatViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsBroadcastModalOpen(false)}
-                  className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-semibold text-xs hover:bg-slate-50 transition-colors"
+                  className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-semibold text-xs hover:bg-slate-50 transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={!broadcastText.trim()}
-                  className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white font-bold text-xs shadow-md shadow-amber-500/25 transition-all"
+                  className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white font-bold text-xs shadow-md shadow-amber-500/25 transition-all cursor-pointer"
                 >
                   Publish Announcement 🚀
                 </button>
