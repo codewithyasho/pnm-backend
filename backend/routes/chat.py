@@ -286,8 +286,7 @@ async def admin_websocket_endpoint(
 
 
 
-
-# --- 6. ADMIN REST ENDPOINT: Delete/Clear a Specific User's Chat Thread ---
+# --- 6. ADMIN REST ENDPOINT: Delete/Clear Entire Visitor Thread & Session ---
 @chat_router.delete("/chat/thread/{email}")
 def delete_chat_thread(
     email: str,
@@ -296,22 +295,27 @@ def delete_chat_thread(
 ):
     email = email.strip().lower()
 
-    # Find and delete all messages belonging strictly to this user
+    # 1. Delete all messages for this user
     messages = session.exec(
         select(ChatMessage).where(ChatMessage.user_email == email)
     ).all()
-
     for m in messages:
         session.delete(m)
 
-    # Optional: You can also delete the ChatSession if you want them to completely disappear,
-    # but deleting messages clears their chat history as requested!
+    # 2. Delete the ChatSession itself so they vanish completely from the left sidebar feed!
+    chat_sess = session.exec(
+        select(ChatSession).where(ChatSession.corporate_email == email)
+    ).first()
+    if chat_sess:
+        session.delete(chat_sess)
+
     session.commit()
 
     return {
         "status": "success",
-        "message": f"Chat history for {email} has been cleared from admin view."
+        "message": f"Thread and history for {email} have been completely removed."
     }
+
 
 
 # --- 7. ADMIN REST ENDPOINT: Delete a Specific Broadcast Message ---
