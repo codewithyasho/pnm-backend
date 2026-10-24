@@ -283,3 +283,54 @@ async def admin_websocket_endpoint(
 
     except WebSocketDisconnect:
         chat_manager.disconnect_admin(websocket)
+
+
+
+
+# --- 6. ADMIN REST ENDPOINT: Delete/Clear a Specific User's Chat Thread ---
+@chat_router.delete("/chat/thread/{email}")
+def delete_chat_thread(
+    email: str,
+    session: Session = Depends(get_session),
+    admin_key: str = Depends(verify_api_key),
+):
+    email = email.strip().lower()
+
+    # Find and delete all messages belonging strictly to this user
+    messages = session.exec(
+        select(ChatMessage).where(ChatMessage.user_email == email)
+    ).all()
+
+    for m in messages:
+        session.delete(m)
+
+    # Optional: You can also delete the ChatSession if you want them to completely disappear,
+    # but deleting messages clears their chat history as requested!
+    session.commit()
+
+    return {
+        "status": "success",
+        "message": f"Chat history for {email} has been cleared from admin view."
+    }
+
+
+# --- 7. ADMIN REST ENDPOINT: Delete a Specific Broadcast Message ---
+@chat_router.delete("/chat/broadcast/{message_id}")
+def delete_broadcast_message(
+    message_id: int,
+    session: Session = Depends(get_session),
+    admin_key: str = Depends(verify_api_key),
+):
+    msg = session.get(ChatMessage, message_id)
+
+    if not msg or not msg.is_broadcast:
+        raise HTTPException(
+            status_code=404, detail="Broadcast message not found.")
+
+    session.delete(msg)
+    session.commit()
+
+    return {
+        "status": "success",
+        "message": f"Broadcast message #{message_id} deleted successfully."
+    }
