@@ -326,6 +326,45 @@ export function App() {
     }
   }, []);
 
+  // Delete / Clear a specific user's chat thread
+  const handleDeleteChatThread = useCallback(async (email: string): Promise<boolean> => {
+    try {
+      const res = await api.deleteChatThread(email);
+      setChatThreads((prev) =>
+        prev.map((t) =>
+          (t.corporate_email || '').toLowerCase() === email.toLowerCase()
+            ? { ...t, messages: t.messages.filter((m) => m.is_broadcast), unread_count: 0 }
+            : t
+        )
+      );
+      addToast(res.message || `Chat history for ${email} cleared successfully.`, 'success');
+      return true;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to clear chat thread';
+      addToast(msg, 'error');
+      return false;
+    }
+  }, [addToast]);
+
+  // Delete a specific global broadcast announcement
+  const handleDeleteBroadcast = useCallback(async (messageId: number): Promise<boolean> => {
+    try {
+      const res = await api.deleteBroadcastMessage(messageId);
+      setChatThreads((prev) =>
+        prev.map((t) => ({
+          ...t,
+          messages: t.messages.filter((m) => m.id !== messageId),
+        }))
+      );
+      addToast(res.message || `Broadcast message #${messageId} deleted successfully.`, 'success');
+      return true;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to delete broadcast message';
+      addToast(msg, 'error');
+      return false;
+    }
+  }, [addToast]);
+
   // Handle Enquiry Status Update (Calls PATCH /admin/update/status/{id})
   const handleUpdateStatus = async (id: number, newStatus: EnquiryStatus) => {
     setUpdatingId(id);
@@ -680,6 +719,8 @@ export function App() {
               onlineUsers={onlineUsers}
               onSendMessage={handleSendChatMessage}
               onMarkRead={handleMarkChatRead}
+              onDeleteThread={handleDeleteChatThread}
+              onDeleteBroadcast={handleDeleteBroadcast}
               wsStatus={chatWsStatus}
               onRefresh={loadChatConversations}
               isLoading={isChatLoading}

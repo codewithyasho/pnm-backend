@@ -12,6 +12,7 @@ import {
   Wifi,
   WifiOff,
   ArrowLeft,
+  Trash2,
 } from 'lucide-react';
 import type { ChatSessionThread } from '../types';
 
@@ -20,6 +21,8 @@ interface LiveChatViewProps {
   onlineUsers: string[];
   onSendMessage: (toEmail: string | null, message: string) => boolean;
   onMarkRead: (email: string) => Promise<void>;
+  onDeleteThread: (email: string) => Promise<boolean>;
+  onDeleteBroadcast: (messageId: number) => Promise<boolean>;
   wsStatus: 'connecting' | 'connected' | 'error' | 'disconnected';
   onRefresh: () => void;
   isLoading: boolean;
@@ -30,6 +33,8 @@ export const LiveChatView: React.FC<LiveChatViewProps> = ({
   onlineUsers,
   onSendMessage,
   onMarkRead,
+  onDeleteThread,
+  onDeleteBroadcast,
   wsStatus,
   onRefresh,
   isLoading,
@@ -42,6 +47,8 @@ export const LiveChatView: React.FC<LiveChatViewProps> = ({
   const [broadcastText, setBroadcastText] = useState('');
   const [copiedEmail, setCopiedEmail] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [isDeletingThread, setIsDeletingThread] = useState(false);
+  const [deletingBroadcastId, setDeletingBroadcastId] = useState<number | null>(null);
 
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -155,6 +162,35 @@ export const LiveChatView: React.FC<LiveChatViewProps> = ({
     if (success) {
       setBroadcastText('');
       setIsBroadcastModalOpen(false);
+    }
+  };
+
+  // Clear / Delete Thread Messages
+  const handleClearCurrentThread = async () => {
+    if (!currentThread || isDeletingThread) return;
+    const targetName = currentThread.full_name || currentThread.corporate_email;
+    if (
+      window.confirm(
+        `Are you sure you want to clear chat history for "${targetName}"? This will delete all user messages for this thread.`
+      )
+    ) {
+      setIsDeletingThread(true);
+      await onDeleteThread(currentThread.corporate_email);
+      setIsDeletingThread(false);
+    }
+  };
+
+  // Delete Global Broadcast Announcement
+  const handleDeleteBroadcastMsg = async (messageId: number) => {
+    if (deletingBroadcastId !== null) return;
+    if (
+      window.confirm(
+        'Are you sure you want to delete this global announcement? It will be removed from all visitor chat histories.'
+      )
+    ) {
+      setDeletingBroadcastId(messageId);
+      await onDeleteBroadcast(messageId);
+      setDeletingBroadcastId(null);
     }
   };
 
@@ -477,10 +513,23 @@ export const LiveChatView: React.FC<LiveChatViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setIsBroadcastModalOpen(true)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs transition-colors"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs transition-colors cursor-pointer"
                   >
                     <Megaphone className="w-3.5 h-3.5 text-amber-500" />
                     <span className="hidden sm:inline">Broadcast</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleClearCurrentThread}
+                    disabled={isDeletingThread}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-rose-200 hover:bg-rose-50 text-rose-600 font-semibold text-xs transition-colors cursor-pointer disabled:opacity-50"
+                    title="Clear chat history for this visitor"
+                  >
+                    <Trash2 className={`w-3.5 h-3.5 text-rose-500 ${isDeletingThread ? 'animate-spin' : ''}`} />
+                    <span className="hidden sm:inline">
+                      {isDeletingThread ? 'Clearing...' : 'Clear Chat'}
+                    </span>
                   </button>
                 </div>
               </div>
@@ -505,11 +554,24 @@ export const LiveChatView: React.FC<LiveChatViewProps> = ({
 
                     if (isBroadcast) {
                       return (
-                        <div key={msg.id || `bc-${index}`} className="flex justify-center my-3">
-                          <div className="max-w-md w-full bg-amber-50/90 border border-amber-200 rounded-2xl p-3 shadow-xs">
-                            <div className="flex items-center gap-1.5 text-amber-800 font-bold text-xs mb-1">
-                              <Megaphone className="w-3.5 h-3.5 text-amber-600" />
-                              <span>Global Announcement</span>
+                        <div key={msg.id || `bc-${index}`} className="flex justify-center my-3 group">
+                          <div className="max-w-md w-full bg-amber-50/90 border border-amber-200 rounded-2xl p-3 shadow-xs hover:border-amber-300 transition-all">
+                            <div className="flex items-center justify-between text-amber-800 font-bold text-xs mb-1">
+                              <div className="flex items-center gap-1.5">
+                                <Megaphone className="w-3.5 h-3.5 text-amber-600" />
+                                <span>Global Announcement</span>
+                              </div>
+                              {msg.id && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteBroadcastMsg(msg.id!)}
+                                  disabled={deletingBroadcastId === msg.id}
+                                  className="p-1 rounded-lg text-amber-700/60 hover:text-rose-600 hover:bg-rose-100/60 transition-colors cursor-pointer"
+                                  title="Delete this broadcast announcement"
+                                >
+                                  <Trash2 className={`w-3.5 h-3.5 ${deletingBroadcastId === msg.id ? 'animate-spin text-rose-600' : ''}`} />
+                                </button>
+                              )}
                             </div>
                             <p className="text-xs text-amber-900 leading-relaxed">{msg.message}</p>
                             <div className="text-[10px] text-amber-700/80 text-right mt-1">

@@ -283,6 +283,18 @@ export const api = {
     });
   },
 
+  deleteChatThread: async (email: string): Promise<{ status: string; message: string }> => {
+    return makeRequest<{ status: string; message: string }>(`/admin/chat/thread/${encodeURIComponent(email)}`, {
+      method: 'DELETE',
+    });
+  },
+
+  deleteBroadcastMessage: async (messageId: number): Promise<{ status: string; message: string }> => {
+    return makeRequest<{ status: string; message: string }>(`/admin/chat/broadcast/${messageId}`, {
+      method: 'DELETE',
+    });
+  },
+
   connectAdminChatWS: (
     onMessage: (msg: ChatMessage) => void,
     onPresence: (presence: UserPresenceEvent) => void,
