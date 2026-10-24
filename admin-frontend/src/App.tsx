@@ -326,21 +326,18 @@ export function App() {
     }
   }, []);
 
-  // Delete / Clear a specific user's chat thread
+  // Delete / Clear a specific user's chat thread and session
   const handleDeleteChatThread = useCallback(async (email: string): Promise<boolean> => {
     try {
       const res = await api.deleteChatThread(email);
+      // Immediately remove this user thread completely from local state
       setChatThreads((prev) =>
-        prev.map((t) =>
-          (t.corporate_email || '').toLowerCase() === email.toLowerCase()
-            ? { ...t, messages: t.messages.filter((m) => m.is_broadcast), unread_count: 0 }
-            : t
-        )
+        prev.filter((t) => (t.corporate_email || '').toLowerCase() !== email.toLowerCase())
       );
-      addToast(res.message || `Chat history for ${email} cleared successfully.`, 'success');
+      addToast(res.message || `Chat thread for ${email} completely removed.`, 'success');
       return true;
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Failed to clear chat thread';
+      const msg = err instanceof Error ? err.message : 'Failed to delete chat thread';
       addToast(msg, 'error');
       return false;
     }

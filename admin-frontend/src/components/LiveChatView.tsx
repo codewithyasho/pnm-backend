@@ -165,18 +165,31 @@ export const LiveChatView: React.FC<LiveChatViewProps> = ({
     }
   };
 
-  // Clear / Delete Thread Messages
+  // Clear / Delete Thread and Session
   const handleClearCurrentThread = async () => {
     if (!currentThread || isDeletingThread) return;
-    const targetName = currentThread.full_name || currentThread.corporate_email;
+    const emailToDelete = currentThread.corporate_email;
+    const targetName = currentThread.full_name || emailToDelete;
     if (
       window.confirm(
-        `Are you sure you want to clear chat history for "${targetName}"? This will delete all user messages for this thread.`
+        `Are you sure you want to delete the chat thread for "${targetName}"? This will permanently remove this visitor and all their messages from the sidebar feed.`
       )
     ) {
       setIsDeletingThread(true);
-      await onDeleteThread(currentThread.corporate_email);
+      const success = await onDeleteThread(emailToDelete);
       setIsDeletingThread(false);
+
+      if (success) {
+        // Immediately determine the next thread to select or show empty state
+        const remaining = threads.filter(
+          (t) => (t.corporate_email || '').toLowerCase() !== emailToDelete.toLowerCase()
+        );
+        if (remaining.length > 0) {
+          setSelectedEmail(remaining[0].corporate_email);
+        } else {
+          setSelectedEmail(null);
+        }
+      }
     }
   };
 
@@ -524,11 +537,11 @@ export const LiveChatView: React.FC<LiveChatViewProps> = ({
                     onClick={handleClearCurrentThread}
                     disabled={isDeletingThread}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-rose-200 hover:bg-rose-50 text-rose-600 font-semibold text-xs transition-colors cursor-pointer disabled:opacity-50"
-                    title="Clear chat history for this visitor"
+                    title="Delete this visitor thread and chat history"
                   >
                     <Trash2 className={`w-3.5 h-3.5 text-rose-500 ${isDeletingThread ? 'animate-spin' : ''}`} />
                     <span className="hidden sm:inline">
-                      {isDeletingThread ? 'Clearing...' : 'Clear Chat'}
+                      {isDeletingThread ? 'Deleting...' : 'Delete Thread'}
                     </span>
                   </button>
                 </div>
