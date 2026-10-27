@@ -421,9 +421,14 @@ document.addEventListener("DOMContentLoaded", () => {
   const toastText = document.getElementById("toastText");
 
   // Configurable API base URL: defaults to VPS production backend (https://api.theseventhsip.online)
+  let storedUserApiBase = localStorage.getItem("pnm_api_base");
+  if (storedUserApiBase && (storedUserApiBase.includes("hf.space") || storedUserApiBase.includes("finewavetech"))) {
+    localStorage.removeItem("pnm_api_base");
+    storedUserApiBase = null;
+  }
   const API_BASE_URL =
     window.PNM_API_BASE ||
-    localStorage.getItem("pnm_api_base") ||
+    storedUserApiBase ||
     "https://api.theseventhsip.online";
 
   let toastTimer = null;

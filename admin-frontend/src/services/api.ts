@@ -27,7 +27,14 @@ export const setStoredApiKey = (key: string): void => {
 
 export const getStoredApiBase = (): string => {
   const stored = localStorage.getItem('pnm_admin_api_base');
-  if (stored) return stored;
+  if (stored) {
+    // If the stored URL is the old Hugging Face URL, automatically migrate to the new VPS URL
+    if (stored.includes('hf.space') || stored.includes('finewavetech')) {
+      localStorage.setItem('pnm_admin_api_base', DEFAULT_API_BASE);
+      return DEFAULT_API_BASE;
+    }
+    return stored;
+  }
   return DEFAULT_API_BASE;
 };
 
