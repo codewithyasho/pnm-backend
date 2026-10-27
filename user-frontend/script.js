@@ -420,15 +420,11 @@ document.addEventListener("DOMContentLoaded", () => {
   const toastMsg = document.getElementById("toastMsg");
   const toastText = document.getElementById("toastText");
 
-  // Configurable API base URL: defaults to local backend when on localhost/127.0.0.1/file, or Hugging Face Spaces production
+  // Configurable API base URL: defaults to VPS production backend (https://api.theseventhsip.online)
   const API_BASE_URL =
     window.PNM_API_BASE ||
     localStorage.getItem("pnm_api_base") ||
-    (window.location.hostname === "localhost" ||
-    window.location.hostname === "127.0.0.1" ||
-    window.location.protocol === "file:"
-      ? "http://127.0.0.1:8000"
-      : "https://yashodeep2006-finewavetech-api.hf.space");
+    "https://api.theseventhsip.online";
 
   let toastTimer = null;
   function showToast(message, type = "success") {

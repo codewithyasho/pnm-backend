@@ -12,7 +12,7 @@ export default defineConfig({
 
     proxy: {
       "/admin": {
-        target: "https://yashodeep2006-finewavetech-api.hf.space",
+        target: "https://api.theseventhsip.online",
         changeOrigin: true,
         secure: true,
       },

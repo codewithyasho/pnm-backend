@@ -642,7 +642,7 @@ export function App() {
                   <h4 className="font-bold text-sm">Failed to connect to FastAPI Backend</h4>
                   <p className="text-xs text-rose-700 mt-0.5">{loadError}</p>
                   <p className="text-[11px] text-rose-600 mt-1">
-                    Please ensure the backend is available at <span className="font-mono">https://yashodeep2006-finewavetech-api.hf.space</span> and the API Key is valid.
+                    Please ensure the backend is available at <span className="font-mono">https://api.theseventhsip.online</span> and the API Key is valid.
                   </p>
                 </div>
               </div>

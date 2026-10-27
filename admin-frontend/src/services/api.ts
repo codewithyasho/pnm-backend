@@ -14,7 +14,7 @@ import type {
   SessionModeChangedEvent,
 } from '../types';
 
-export const DEFAULT_API_BASE = 'https://yashodeep2006-finewavetech-api.hf.space';
+export const DEFAULT_API_BASE = 'https://api.theseventhsip.online';
 export const DEFAULT_API_KEY = '123';
 
 export const getStoredApiKey = (): string => {
@@ -28,9 +28,6 @@ export const setStoredApiKey = (key: string): void => {
 export const getStoredApiBase = (): string => {
   const stored = localStorage.getItem('pnm_admin_api_base');
   if (stored) return stored;
-  if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
-    return 'http://127.0.0.1:8000';
-  }
   return DEFAULT_API_BASE;
 };
 
