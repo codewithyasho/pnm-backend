@@ -64,9 +64,13 @@ class SenderRole(str, Enum):
     USER = "user"
     ADMIN = "admin"
 
+    AI = "ai"  # <-- NEW: Identifies messages sent by the LangGraph AI Bot!
+
 
 class ChatSession(SQLModel, table=True):
-    """Stores each visitor's chat identity and secret session_token (No password needed!)."""
+    """
+    Stores each visitor's chat identity, secret session_token, and AI vs Human state.
+    """
 
     id: Optional[int] = Field(
         default=None,
@@ -76,8 +80,15 @@ class ChatSession(SQLModel, table=True):
         index=True,
         unique=True
     )
+
     full_name: str
-    session_token: str  # Auto-generated UUID from FE and saved in visitor's localStorage
+    session_token: str
+
+    # <-- NEW: False = AI Mode, True = Human Admin Mode
+    is_escalated: bool = Field(default=False)
+
+    # <-- NEW: Why they asked for an admin
+    escalation_reason: Optional[str] = Field(default=None)
 
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc)
@@ -88,25 +99,25 @@ class ChatSession(SQLModel, table=True):
 
 
 class ChatMessage(SQLModel, table=True):
-    """Stores every chat message (1-on-1 and Admin Broadcasts) in SQLite."""
+    """
+    Stores every chat message (AI, 1-on-1 Human, and Admin Broadcasts) in SQLite.
+    """
 
     id: Optional[int] = Field(
         default=None,
         primary_key=True
     )
-    # Which user thread this message belongs to ("ALL" if it's an Admin global broadcast)
     user_email: str = Field(index=True)
     user_name: str
 
-    sender_role: SenderRole  # "user" or "admin"
+    sender_role: SenderRole  # "user", "admin", or "ai"
 
     message: str = Field(
         min_length=1,
-        max_length=2000
+        max_length=4000
     )
-
     is_broadcast: bool = Field(default=False)
-    is_read_by_admin: bool = Field(default=False)   # like of unread msg
+    is_read_by_admin: bool = Field(default=False)
 
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc)
@@ -116,7 +127,10 @@ class ChatMessage(SQLModel, table=True):
 class IncomingChatPayload(SQLModel):
     """Pydantic validator for incoming WebSocket JSON messages."""
 
-    to_email: Optional[str] = Field(
-        default=None)  # Used by Admin (None = Broadcast to ALL)
-
-    message: str = Field(min_length=1, max_length=2000)
+    to_email: Optional[str] = Field(default=None)
+    message: Optional[str] = Field(
+        default=None,
+        max_length=2000
+    )
+    # <-- NEW: Allows visitor to click "yes" or "no" on the HITL confirmation buttons!
+    hitl_decision: Optional[str] = Field(default=None)

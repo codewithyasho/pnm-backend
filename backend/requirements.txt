@@ -4,3 +4,7 @@ sqlmodel
 tzdata
 python-dotenv
 email-validator
+
+langchain
+langchain-groq
+langchain-ollama
