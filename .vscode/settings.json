@@ -1,0 +1,17 @@
+{
+  "liveServer.settings.ignoreFiles": [
+    "**/database.db*",
+    "**/*.db*",
+    "**/*.sqlite*",
+    "**/backend/**",
+    "**/admin-frontend/**",
+    "**/venv/**",
+    "**/.git/**"
+  ],
+  "files.watcherExclude": {
+    "**/database.db*": true,
+    "**/*.db*": true,
+    "**/*.sqlite*": true,
+    "**/backend/database.db*": true
+  }
+}

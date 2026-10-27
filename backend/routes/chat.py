@@ -70,9 +70,6 @@ def get_user_chat_history(
                 status_code=403,
                 detail="This email is already registered in an active chat session on another device.",
             )
-        chat_sess.last_active_at = datetime.now(timezone.utc)
-        session.add(chat_sess)
-        session.commit()
 
     messages = session.exec(
         select(ChatMessage)
@@ -616,9 +613,6 @@ def get_user_chat_history_v1(
                 status_code=403,
                 detail="This email is already registered in an active chat session on another device.",
             )
-        chat_sess.last_active_at = datetime.now(timezone.utc)
-        session.add(chat_sess)
-        session.commit()
 
     messages = session.exec(
         select(ChatMessage)

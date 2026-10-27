@@ -1048,6 +1048,7 @@ document.addEventListener("DOMContentLoaded", () => {
   if (preChatFormEl) {
     preChatFormEl.addEventListener("submit", (e) => {
       e.preventDefault();
+      e.stopPropagation();
       const name = (chatNameInput?.value || "").trim();
       const email = (chatEmailInput?.value || "").trim().toLowerCase();
 
@@ -1084,6 +1085,7 @@ document.addEventListener("DOMContentLoaded", () => {
   if (chatInputForm) {
     chatInputForm.addEventListener("submit", (e) => {
       e.preventDefault();
+      e.stopPropagation();
       if (chatMessageInput) {
         sendChatMessage(chatMessageInput.value);
       }
