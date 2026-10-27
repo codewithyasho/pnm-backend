@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI
 import uvicorn
 
+import logfire
 
 
 @asynccontextmanager
@@ -22,6 +23,12 @@ app = FastAPI(
     title="People Network Management LLP ADMIN DASHBOARD",
     lifespan=lifespan
 )
+
+
+# logfire obervability
+logfire.configure()
+logfire.instrument_system_metrics()
+logfire.instrument_fastapi(app)
 
 app.add_middleware(
     CORSMiddleware,
