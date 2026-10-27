@@ -664,6 +664,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const chatBadge = document.getElementById("pnmChatBadge");
   const chatStatus = document.getElementById("pnmChatStatus");
   const statusText = document.getElementById("pnmStatusText");
+  const chatModeBadge = document.getElementById("pnmChatModeBadge");
 
   // Views
   const chatPreForm = document.getElementById("pnmChatPreForm");
@@ -682,6 +683,8 @@ document.addEventListener("DOMContentLoaded", () => {
   let chatReconnectTimer = null;
   let isIntentionallyClosed = false;
   let unreadChatCount = 0;
+  let currentIsEscalated = false;
+  let aiTypingElement = null;
   const renderedMessageIds = new Set();
 
   // Helper: Persistent UUID Session Token
@@ -746,11 +749,101 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  // Update Header Mode Badge (AI vs Human Support)
+  function updateHeaderModeBadge(isEscalated) {
+    currentIsEscalated = Boolean(isEscalated);
+    if (!chatModeBadge) return;
+    if (currentIsEscalated) {
+      chatModeBadge.className = "chat-mode-badge mode-admin";
+      chatModeBadge.textContent = "👨‍💼 Live Admin Support";
+    } else {
+      chatModeBadge.className = "chat-mode-badge mode-ai";
+      chatModeBadge.textContent = "🤖 PNM AI Assistant";
+    }
+  }
+
+  // Toggle AI Typing Indicator Bubble
+  function setAiTyping(isTyping) {
+    if (!chatMessagesList) return;
+    if (isTyping) {
+      if (aiTypingElement) return;
+      aiTypingElement = document.createElement("div");
+      aiTypingElement.className = "chat-msg chat-typing-indicator";
+      aiTypingElement.id = "pnmAiTypingBubble";
+      aiTypingElement.innerHTML = `
+        <span>🤖 AI Assistant is thinking</span>
+        <div class="typing-dots"><span></span><span></span><span></span></div>
+      `;
+      chatMessagesList.appendChild(aiTypingElement);
+      scrollMessagesToBottom(true);
+    } else {
+      if (aiTypingElement) {
+        aiTypingElement.remove();
+        aiTypingElement = null;
+      }
+      const leftover = document.getElementById("pnmAiTypingBubble");
+      if (leftover) leftover.remove();
+    }
+  }
+
+  // Render Human-in-the-Loop (HITL) Escalation Confirmation Card
+  function renderHitlInterruptCard(promptText) {
+    if (!chatMessagesList) return;
+    setAiTyping(false);
+
+    const card = document.createElement("div");
+    card.className = "chat-msg chat-hitl-card";
+    const safePrompt = escapeHtml(promptText || "Would you like me to connect you directly with a live PNM Support Admin?");
+
+    card.innerHTML = `
+      <div class="hitl-header">
+        <span>🤝 Live Support Request</span>
+      </div>
+      <div class="hitl-prompt">${safePrompt}</div>
+      <div class="hitl-actions">
+        <button type="button" class="hitl-btn hitl-btn-yes" data-decision="yes">
+          ✅ Yes, Connect to Admin
+        </button>
+        <button type="button" class="hitl-btn hitl-btn-no" data-decision="no">
+          ❌ No, Continue with AI
+        </button>
+      </div>
+      <div class="hitl-answered-msg" style="display: none;"></div>
+    `;
+
+    const actionsContainer = card.querySelector(".hitl-actions");
+    const answeredMsg = card.querySelector(".hitl-answered-msg");
+    const yesBtn = card.querySelector(".hitl-btn-yes");
+    const noBtn = card.querySelector(".hitl-btn-no");
+
+    const handleDecision = (decision) => {
+      if (actionsContainer) actionsContainer.style.display = "none";
+      if (answeredMsg) {
+        answeredMsg.style.display = "block";
+        answeredMsg.innerHTML = decision === "yes"
+          ? `<span class="hitl-badge-yes">✅ Connecting you to Human Admin...</span>`
+          : `<span class="hitl-badge-no">❌ Continuing with AI Assistant</span>`;
+      }
+      if (chatSocket && chatSocket.readyState === WebSocket.OPEN) {
+        chatSocket.send(JSON.stringify({ hitl_decision: decision }));
+      }
+    };
+
+    yesBtn?.addEventListener("click", () => handleDecision("yes"));
+    noBtn?.addEventListener("click", () => handleDecision("no"));
+
+    chatMessagesList.appendChild(card);
+    scrollMessagesToBottom(true);
+  }
+
   // Render a chat message bubble
   function renderMessageItem(msg, scroll = true) {
     if (!chatMessagesList) return;
     if (msg.id && renderedMessageIds.has(msg.id)) return;
     if (msg.id) renderedMessageIds.add(msg.id);
+
+    // Dismiss AI typing indicator whenever a message arrives
+    setAiTyping(false);
 
     const msgEl = document.createElement("div");
     const timeStr = formatTime(msg.created_at);
@@ -772,13 +865,22 @@ document.addEventListener("DOMContentLoaded", () => {
         <div class="msg-bubble">${escapeHtml(msg.message)}</div>
         <div class="msg-meta">${timeStr}</div>
       `;
+    } else if (msg.sender_role === "ai") {
+      // AI Assistant Message (Left)
+      msgEl.className = "chat-msg chat-msg-ai";
+      msgEl.innerHTML = `
+        <div class="msg-author">
+          🤖 AI Assistant
+        </div>
+        <div class="msg-bubble">${escapeHtml(msg.message)}</div>
+        <div class="msg-meta">${timeStr}</div>
+      `;
     } else {
-      // Admin / Support Message (Left)
+      // Human Admin / Support Message (Left)
       msgEl.className = "chat-msg chat-msg-admin";
       msgEl.innerHTML = `
         <div class="msg-author">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-          PNM Support
+          👨‍💼 Human Admin
         </div>
         <div class="msg-bubble">${escapeHtml(msg.message)}</div>
         <div class="msg-meta">${timeStr}</div>
@@ -811,13 +913,21 @@ document.addEventListener("DOMContentLoaded", () => {
         throw new Error(`Failed to load history (${res.status})`);
       }
       const data = await res.json();
-      if (data && Array.isArray(data.messages)) {
-        if (data.messages.length > 0 && chatMessagesList) {
-          chatMessagesList.innerHTML = "";
-          renderedMessageIds.clear();
+      if (data) {
+        if (typeof data.is_escalated !== "undefined") {
+          updateHeaderModeBadge(data.is_escalated);
         }
-        data.messages.forEach((m) => renderMessageItem(m, false));
-        scrollMessagesToBottom(false);
+        if (Array.isArray(data.messages)) {
+          if (data.messages.length > 0 && chatMessagesList) {
+            chatMessagesList.innerHTML = "";
+            renderedMessageIds.clear();
+          }
+          data.messages.forEach((m) => renderMessageItem(m, false));
+          scrollMessagesToBottom(false);
+        }
+        if (data.has_pending_interrupt && data.interrupt_prompt) {
+          renderHitlInterruptCard(data.interrupt_prompt);
+        }
       }
     } catch (err) {
       console.warn("Could not load past chat history:", err);
@@ -852,13 +962,20 @@ document.addEventListener("DOMContentLoaded", () => {
         try {
           const packet = JSON.parse(event.data);
           if (packet.event === "chat_message" && packet.data) {
+            setAiTyping(false);
             renderMessageItem(packet.data, true);
 
-            // If chat window is closed, increment unread badge for admin/broadcast messages
+            // If chat window is closed, increment unread badge for admin/ai/broadcast messages
             const isWidgetOpen = chatWidget && chatWidget.classList.contains("open");
             if (!isWidgetOpen && packet.data.sender_role !== "user") {
               updateUnreadBadge(unreadChatCount + 1);
             }
+          } else if (packet.event === "ai_typing") {
+            setAiTyping(Boolean(packet.is_typing));
+          } else if (packet.event === "hitl_interrupt") {
+            renderHitlInterruptCard(packet.prompt);
+          } else if (packet.event === "session_mode_changed") {
+            updateHeaderModeBadge(packet.is_escalated);
           }
         } catch (err) {
           console.error("Error processing incoming chat packet:", err);
@@ -982,6 +1099,8 @@ document.addEventListener("DOMContentLoaded", () => {
         localStorage.removeItem("pnm_chat_name");
         localStorage.removeItem("pnm_chat_email");
         renderedMessageIds.clear();
+        setAiTyping(false);
+        updateHeaderModeBadge(false);
         if (chatMessagesList) {
           chatMessagesList.innerHTML = `
             <div class="chat-msg chat-msg-system">

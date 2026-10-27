@@ -13,6 +13,8 @@ import {
   WifiOff,
   ArrowLeft,
   Trash2,
+  Bot,
+  AlertTriangle,
 } from 'lucide-react';
 import type { ChatSessionThread } from '../types';
 
@@ -23,6 +25,7 @@ interface LiveChatViewProps {
   onMarkRead: (email: string) => Promise<void>;
   onDeleteThread: (email: string) => Promise<boolean>;
   onDeleteBroadcast: (messageId: number) => Promise<boolean>;
+  onReturnToAI: (email: string) => Promise<boolean>;
   wsStatus: 'connecting' | 'connected' | 'error' | 'disconnected';
   onRefresh: () => void;
   isLoading: boolean;
@@ -35,13 +38,14 @@ export const LiveChatView: React.FC<LiveChatViewProps> = ({
   onMarkRead,
   onDeleteThread,
   onDeleteBroadcast,
+  onReturnToAI,
   wsStatus,
   onRefresh,
   isLoading,
 }) => {
   const [selectedEmail, setSelectedEmail] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterType, setFilterType] = useState<'all' | 'online' | 'unread'>('all');
+  const [filterType, setFilterType] = useState<'all' | 'online' | 'unread' | 'escalated'>('all');
   const [replyText, setReplyText] = useState('');
   const [isBroadcastModalOpen, setIsBroadcastModalOpen] = useState(false);
   const [broadcastText, setBroadcastText] = useState('');
@@ -49,6 +53,7 @@ export const LiveChatView: React.FC<LiveChatViewProps> = ({
   const [isSending, setIsSending] = useState(false);
   const [isDeletingThread, setIsDeletingThread] = useState(false);
   const [deletingBroadcastId, setDeletingBroadcastId] = useState<number | null>(null);
+  const [isReturningToAI, setIsReturningToAI] = useState(false);
 
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -127,6 +132,7 @@ export const LiveChatView: React.FC<LiveChatViewProps> = ({
       if (!matchesSearch) return false;
       if (filterType === 'online') return isOnline;
       if (filterType === 'unread') return t.unread_count > 0;
+      if (filterType === 'escalated') return Boolean(t.is_escalated);
       return true;
     });
   }, [threads, searchQuery, filterType, onlineUsers]);
@@ -193,6 +199,14 @@ export const LiveChatView: React.FC<LiveChatViewProps> = ({
     }
   };
 
+  // Return escalated visitor thread back to AI Assistant
+  const handleReturnCurrentThreadToAI = async () => {
+    if (!currentThread || isReturningToAI) return;
+    setIsReturningToAI(true);
+    await onReturnToAI(currentThread.corporate_email);
+    setIsReturningToAI(false);
+  };
+
   // Delete Global Broadcast Announcement
   const handleDeleteBroadcastMsg = async (messageId: number) => {
     if (deletingBroadcastId !== null) return;
@@ -240,6 +254,10 @@ export const LiveChatView: React.FC<LiveChatViewProps> = ({
       (t) => onlineUsers.includes((t.corporate_email || '').toLowerCase()) || t.is_online
     ).length;
   }, [threads, onlineUsers]);
+
+  const escalatedCount = useMemo(() => {
+    return threads.filter((t) => t.is_escalated).length;
+  }, [threads]);
 
   return (
     <div className="space-y-6">
@@ -333,10 +351,10 @@ export const LiveChatView: React.FC<LiveChatViewProps> = ({
             </div>
 
             {/* Filter Pills */}
-            <div className="flex gap-1.5 text-xs">
+            <div className="flex gap-1.5 text-xs flex-wrap">
               <button
                 onClick={() => setFilterType('all')}
-                className={`px-2.5 py-1 rounded-lg font-semibold transition-colors ${
+                className={`px-2 py-1 rounded-lg font-semibold transition-colors ${
                   filterType === 'all'
                     ? 'bg-indigo-600 text-white shadow-xs'
                     : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -346,7 +364,7 @@ export const LiveChatView: React.FC<LiveChatViewProps> = ({
               </button>
               <button
                 onClick={() => setFilterType('online')}
-                className={`px-2.5 py-1 rounded-lg font-semibold transition-colors ${
+                className={`px-2 py-1 rounded-lg font-semibold transition-colors ${
                   filterType === 'online'
                     ? 'bg-emerald-600 text-white shadow-xs'
                     : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -355,8 +373,18 @@ export const LiveChatView: React.FC<LiveChatViewProps> = ({
                 🟢 Online ({onlineCount})
               </button>
               <button
+                onClick={() => setFilterType('escalated')}
+                className={`px-2 py-1 rounded-lg font-semibold transition-colors ${
+                  filterType === 'escalated'
+                    ? 'bg-rose-600 text-white shadow-xs'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                🚨 Escalated ({escalatedCount})
+              </button>
+              <button
                 onClick={() => setFilterType('unread')}
-                className={`px-2.5 py-1 rounded-lg font-semibold transition-colors ${
+                className={`px-2 py-1 rounded-lg font-semibold transition-colors ${
                   filterType === 'unread'
                     ? 'bg-amber-600 text-white shadow-xs'
                     : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -420,8 +448,26 @@ export const LiveChatView: React.FC<LiveChatViewProps> = ({
                           </span>
                         )}
                       </div>
-                      <div className="text-[11px] text-slate-500 truncate mb-1">
-                        {threadEmail}
+
+                      {/* Escalation / AI Status Badge & Email */}
+                      <div className="flex items-center gap-1.5 mt-0.5 mb-1">
+                        {thread.is_escalated ? (
+                          <span
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-rose-50 text-rose-700 border border-rose-200 text-[10px] font-bold shrink-0"
+                            title={thread.escalation_reason || 'Needs Human Admin Support'}
+                          >
+                            <AlertTriangle className="w-2.5 h-2.5 text-rose-600" />
+                            <span>Needs Admin</span>
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-violet-50 text-violet-700 border border-violet-200 text-[10px] font-medium shrink-0">
+                            <Bot className="w-2.5 h-2.5 text-violet-600" />
+                            <span>AI Mode</span>
+                          </span>
+                        )}
+                        <span className="text-[11px] text-slate-500 truncate flex-1">
+                          {threadEmail}
+                        </span>
                       </div>
 
                       {/* Last message preview */}
@@ -523,6 +569,21 @@ export const LiveChatView: React.FC<LiveChatViewProps> = ({
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0">
+                  {currentThread.is_escalated && (
+                    <button
+                      type="button"
+                      onClick={handleReturnCurrentThreadToAI}
+                      disabled={isReturningToAI}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-semibold text-xs shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+                      title="Hand this chat back to the AI Assistant"
+                    >
+                      <Bot className={`w-3.5 h-3.5 ${isReturningToAI ? 'animate-spin' : ''}`} />
+                      <span className="hidden sm:inline">
+                        {isReturningToAI ? 'Handing Back...' : 'Return to AI Bot'}
+                      </span>
+                    </button>
+                  )}
+
                   <button
                     type="button"
                     onClick={() => setIsBroadcastModalOpen(true)}
@@ -547,6 +608,30 @@ export const LiveChatView: React.FC<LiveChatViewProps> = ({
                 </div>
               </div>
 
+              {/* Escalation Alert Notice Banner */}
+              {currentThread.is_escalated && (
+                <div className="bg-rose-50 border-b border-rose-200 px-4 py-2.5 flex items-center justify-between text-xs text-rose-900 shrink-0">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="font-extrabold flex items-center gap-1 text-rose-700 shrink-0">
+                      <AlertTriangle className="w-3.5 h-3.5" />
+                      <span>Live Human Support Required:</span>
+                    </span>
+                    <span className="truncate text-rose-800">
+                      {currentThread.escalation_reason || 'Visitor requested human agent'}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleReturnCurrentThreadToAI}
+                    disabled={isReturningToAI}
+                    className="ml-2 px-3 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-xs transition-colors flex items-center gap-1.5 shrink-0 cursor-pointer disabled:opacity-50"
+                  >
+                    <Bot className={`w-3.5 h-3.5 ${isReturningToAI ? 'animate-spin' : ''}`} />
+                    <span>{isReturningToAI ? 'Returning...' : 'Return to AI Bot'}</span>
+                  </button>
+                </div>
+              )}
+
               {/* Message History Scroll Area (Only this container scrolls) */}
               <div
                 ref={messagesContainerRef}
@@ -563,6 +648,7 @@ export const LiveChatView: React.FC<LiveChatViewProps> = ({
                 ) : (
                   currentThread.messages.map((msg, index) => {
                     const isUser = msg.sender_role === 'user';
+                    const isAi = msg.sender_role === 'ai';
                     const isBroadcast = msg.is_broadcast;
 
                     if (isBroadcast) {
@@ -595,14 +681,36 @@ export const LiveChatView: React.FC<LiveChatViewProps> = ({
                       );
                     }
 
+                    if (isAi) {
+                      return (
+                        <div
+                          key={msg.id || `msg-${index}`}
+                          className="flex flex-col items-start"
+                        >
+                          <div className="flex items-center gap-1.5 mb-1 px-1">
+                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-violet-700">
+                              <Bot className="w-3.5 h-3.5 text-violet-600" />
+                              <span>PNM AI Assistant</span>
+                            </span>
+                            <span className="text-[10px] text-slate-400">
+                              {formatTime(msg.created_at)}
+                            </span>
+                          </div>
+                          <div className="max-w-[85%] sm:max-w-[78%] rounded-2xl px-4 py-2.5 text-xs sm:text-sm leading-relaxed shadow-xs bg-violet-50 text-violet-950 border border-violet-200 rounded-tl-sm">
+                            {msg.message}
+                          </div>
+                        </div>
+                      );
+                    }
+
                     return (
                       <div
                         key={msg.id || `msg-${index}`}
                         className={`flex flex-col ${isUser ? 'items-start' : 'items-end'}`}
                       >
                         <div className="flex items-center gap-1.5 mb-1 px-1">
-                          <span className="text-[11px] font-semibold text-slate-500">
-                            {isUser ? currentThread.full_name : 'You (Admin)'}
+                          <span className={`text-[11px] ${isUser ? 'font-semibold text-slate-600' : 'font-bold text-indigo-700'}`}>
+                            {isUser ? currentThread.full_name : '👨‍💼 You (Human Admin)'}
                           </span>
                           <span className="text-[10px] text-slate-400">
                             {formatTime(msg.created_at)}

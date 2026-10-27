@@ -57,7 +57,7 @@ export interface FilterParams {
   limit?: number;
 }
 
-export type SenderRole = 'user' | 'admin';
+export type SenderRole = 'user' | 'admin' | 'ai';
 
 export interface ChatMessage {
   id?: number;
@@ -74,6 +74,8 @@ export interface ChatSessionThread {
   corporate_email: string;
   full_name: string;
   is_online: boolean;
+  is_escalated?: boolean;
+  escalation_reason?: string | null;
   last_active_at: string;
   unread_count: number;
   messages: ChatMessage[];
@@ -95,5 +97,13 @@ export interface UserPresenceEvent {
 export interface ChatMessageEvent {
   event: 'chat_message';
   data: ChatMessage;
+}
+
+export interface SessionModeChangedEvent {
+  event: 'session_mode_changed';
+  user_email: string;
+  user_name?: string;
+  is_escalated: boolean;
+  escalation_reason?: string | null;
 }
 

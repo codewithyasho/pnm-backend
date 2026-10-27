@@ -6,6 +6,7 @@ import type {
   ChatSessionThread,
   ChatMessage,
   UserPresenceEvent,
+  SessionModeChangedEvent,
 } from './types';
 import { api } from './services/api';
 import { Header } from './components/Header';
@@ -282,6 +283,34 @@ export function App() {
       // onStatusChange
       (status) => {
         setChatWsStatus(status);
+      },
+      // onModeChange
+      (modeEvent: SessionModeChangedEvent) => {
+        const targetEmail = modeEvent.user_email.toLowerCase();
+        setChatThreads((prev) =>
+          prev.map((t) => {
+            if (t.corporate_email.toLowerCase() === targetEmail) {
+              return {
+                ...t,
+                is_escalated: modeEvent.is_escalated,
+                escalation_reason: modeEvent.escalation_reason,
+              };
+            }
+            return t;
+          })
+        );
+
+        if (modeEvent.is_escalated) {
+          addToast(
+            `🚨 Human Escalation: ${modeEvent.user_name || modeEvent.user_email} requested live support! (${modeEvent.escalation_reason || 'Human agent needed'})`,
+            'error'
+          );
+        } else {
+          addToast(
+            `🤖 ${modeEvent.user_name || modeEvent.user_email} returned to AI Assistant.`,
+            'info'
+          );
+        }
       }
     );
 
@@ -357,6 +386,26 @@ export function App() {
       return true;
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to delete broadcast message';
+      addToast(msg, 'error');
+      return false;
+    }
+  }, [addToast]);
+
+  // Return an escalated visitor thread back to AI Assistant
+  const handleReturnToAI = useCallback(async (email: string): Promise<boolean> => {
+    try {
+      const res = await api.returnThreadToAI(email);
+      setChatThreads((prev) =>
+        prev.map((t) =>
+          t.corporate_email.toLowerCase() === email.toLowerCase()
+            ? { ...t, is_escalated: false, escalation_reason: null }
+            : t
+        )
+      );
+      addToast(res.message || `Chat for ${email} returned to AI Assistant.`, 'success');
+      return true;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to return thread to AI';
       addToast(msg, 'error');
       return false;
     }
@@ -718,6 +767,7 @@ export function App() {
               onMarkRead={handleMarkChatRead}
               onDeleteThread={handleDeleteChatThread}
               onDeleteBroadcast={handleDeleteBroadcast}
+              onReturnToAI={handleReturnToAI}
               wsStatus={chatWsStatus}
               onRefresh={loadChatConversations}
               isLoading={isChatLoading}

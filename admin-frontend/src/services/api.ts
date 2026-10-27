@@ -11,6 +11,7 @@ import type {
   ConversationsResponse,
   ChatMessage,
   UserPresenceEvent,
+  SessionModeChangedEvent,
 } from '../types';
 
 export const DEFAULT_API_BASE = 'https://yashodeep2006-finewavetech-api.hf.space';
@@ -295,10 +296,17 @@ export const api = {
     });
   },
 
+  returnThreadToAI: async (email: string): Promise<{ status: string; message: string }> => {
+    return makeRequest<{ status: string; message: string }>(`/admin/chat/handback/${encodeURIComponent(email)}`, {
+      method: 'PATCH',
+    });
+  },
+
   connectAdminChatWS: (
     onMessage: (msg: ChatMessage) => void,
     onPresence: (presence: UserPresenceEvent) => void,
-    onStatusChange?: (status: 'connecting' | 'connected' | 'error' | 'disconnected') => void
+    onStatusChange?: (status: 'connecting' | 'connected' | 'error' | 'disconnected') => void,
+    onModeChange?: (mode: SessionModeChangedEvent) => void
   ): {
     send: (toEmail: string | null, message: string) => boolean;
     close: () => void;
@@ -330,6 +338,8 @@ export const api = {
               onMessage(packet.data);
             } else if (packet.event === 'user_presence') {
               onPresence(packet as UserPresenceEvent);
+            } else if (packet.event === 'session_mode_changed') {
+              onModeChange?.(packet as SessionModeChangedEvent);
             }
           } catch (err) {
             console.error('[Admin Chat WS] Error parsing packet:', err);

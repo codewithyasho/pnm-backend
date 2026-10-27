@@ -1,3 +1,4 @@
+from pathlib import Path
 import os
 from typing import TypedDict, Annotated, List
 from dotenv import load_dotenv
@@ -11,7 +12,14 @@ from langchain_core.messages import SystemMessage
 from langchain_core.tools import tool
 from langchain_groq import ChatGroq
 
-load_dotenv()
+env_path = Path(__file__).resolve().parent.parent / ".env"
+if env_path.exists():
+    load_dotenv(dotenv_path=env_path, encoding="utf-8")
+else:
+    try:
+        load_dotenv(encoding="utf-8")
+    except Exception:
+        pass
 
 # Persistent memory per visitor thread_id (their corporate_email!)
 memory = MemorySaver()
