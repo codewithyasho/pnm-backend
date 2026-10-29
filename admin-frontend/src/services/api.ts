@@ -15,15 +15,30 @@ import type {
 } from '../types';
 
 export const DEFAULT_API_BASE = 'https://api.theseventhsip.online';
-export const DEFAULT_API_KEY = '123';
 
-export const getStoredApiKey = (): string => {
-  return localStorage.getItem('pnm_admin_api_key') || DEFAULT_API_KEY;
+// Strict In-Memory Security: No hardcoded default key ("123") and no localStorage persistence
+let currentApiKey = '';
+
+// Purge any stale persisted API key from browser storage
+if (typeof window !== 'undefined' && window.localStorage) {
+  try {
+    localStorage.removeItem('pnm_admin_api_key');
+  } catch {
+    // ignore
+  }
+}
+
+export const getApiKey = (): string => {
+  return currentApiKey;
 };
 
-export const setStoredApiKey = (key: string): void => {
-  localStorage.setItem('pnm_admin_api_key', key.trim());
+export const setApiKey = (key: string): void => {
+  currentApiKey = key.trim();
 };
+
+// Aliases for backwards compatibility (strictly in-memory, no persistence)
+export const getStoredApiKey = getApiKey;
+export const setStoredApiKey = setApiKey;
 
 export const getStoredApiBase = (): string => {
   const stored = localStorage.getItem('pnm_admin_api_base');
@@ -55,7 +70,7 @@ const makeRequest = async <T>(
   options: RequestInit = {}
 ): Promise<T> => {
   const base = getStoredApiBase();
-  const apiKey = getStoredApiKey();
+  const apiKey = getApiKey();
   const url = `${base}${endpoint}`;
 
   const headers: Record<string, string> = {
@@ -97,6 +112,9 @@ const makeRequest = async <T>(
 };
 
 export const api = {
+  getApiKey,
+  setApiKey,
+
   checkHealth: async (): Promise<{ status: string; message?: string }> => {
     const base = getStoredApiBase();
     try {
@@ -172,7 +190,7 @@ export const api = {
     onStatusChange?: (status: SSEConnectionStatus) => void
   ): (() => void) => {
     const base = getStoredApiBase();
-    const apiKey = getStoredApiKey();
+    const apiKey = getApiKey();
     const sseUrl = `${base}/admin/sse/stream`;
 
     let abortController = new AbortController();
@@ -306,6 +324,38 @@ export const api = {
     });
   },
 
+  verifyAdminKey: async (key: string): Promise<boolean> => {
+    const base = getStoredApiBase();
+    const cleanKey = key.trim();
+    if (!cleanKey) {
+      throw new Error('Please enter an Admin Security Key.');
+    }
+    const response = await fetch(`${base}/admin/list/users`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': cleanKey,
+      },
+    });
+
+    if (response.ok) {
+      return true;
+    }
+    if (response.status === 401 || response.status === 403) {
+      throw new Error('Invalid Admin Security Key. Access Denied.');
+    }
+    let errorDetail = `Server returned ${response.status} ${response.statusText}`;
+    try {
+      const errJson = await response.json();
+      if (errJson.detail) {
+        errorDetail = typeof errJson.detail === 'string' ? errJson.detail : JSON.stringify(errJson.detail);
+      }
+    } catch {
+      // ignore
+    }
+    throw new Error(errorDetail);
+  },
+
   connectAdminChatWS: (
     onMessage: (msg: ChatMessage) => void,
     onPresence: (presence: UserPresenceEvent) => void,
@@ -316,9 +366,9 @@ export const api = {
     close: () => void;
   } => {
     const base = getStoredApiBase();
-    const apiKey = getStoredApiKey();
     const wsBase = getWsBaseUrl(base);
-    const wsUrl = `${wsBase}/admin/ws/admin?token=${encodeURIComponent(apiKey)}`;
+    // Security Fix: Clean WebSocket URL with NO query parameters or exposed token
+    const wsUrl = `${wsBase}/admin/ws/admin`;
 
     let ws: WebSocket | null = null;
     let isClosed = false;
@@ -332,6 +382,13 @@ export const api = {
         ws = new WebSocket(wsUrl);
 
         ws.onopen = () => {
+          // First-message WebSocket authentication: transmit security token safely over payload
+          const token = getApiKey();
+          try {
+            ws?.send(JSON.stringify({ event: 'auth', token }));
+          } catch (sendErr) {
+            console.error('[Admin Chat WS] Failed to send auth packet:', sendErr);
+          }
           onStatusChange?.('connected');
         };
 
@@ -355,8 +412,13 @@ export const api = {
           onStatusChange?.('error');
         };
 
-        ws.onclose = () => {
+        ws.onclose = (event) => {
           onStatusChange?.('disconnected');
+          // If server rejects authentication policy (1008), do not reconnect in loop
+          if (event.code === 1008) {
+            console.warn('[Admin Chat WS] Policy violation (1008): invalid token. Closing.');
+            return;
+          }
           if (!isClosed) {
             reconnectTimeout = setTimeout(() => {
               if (!isClosed) connect();

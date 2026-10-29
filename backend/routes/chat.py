@@ -70,6 +70,9 @@ def get_user_chat_history(
                 status_code=403,
                 detail="This email is already registered in an active chat session on another device.",
             )
+        chat_sess.last_active_at = datetime.now(timezone.utc)
+        session.add(chat_sess)
+        session.commit()
 
     messages = session.exec(
         select(ChatMessage)
@@ -441,7 +444,7 @@ async def user_websocket_endpoint(
         await chat_manager.disconnect_user(email, websocket)
 
 
-# --- 6. ADMIN WEBSOCKET ENDPOINT ---
+# --- 6. ADMIN WEBSOCKET ENDPOINT (Supports First-Message Auth so URL stays clean!) ---
 @chat_router.websocket("/ws/admin")
 async def admin_websocket_endpoint(
     websocket: WebSocket,
@@ -449,15 +452,29 @@ async def admin_websocket_endpoint(
 ):
     header_key = websocket.headers.get("x-api-key")
     key = header_key or token
-    if key != ADMIN_KEY:
-        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-        return
 
-    await chat_manager.connect_admin(websocket)
+    # If no token in URL/header, accept connection first and require an "auth" packet within 5s
+    if key != ADMIN_KEY:
+        await websocket.accept()
+        try:
+            auth_data = await asyncio.wait_for(websocket.receive_json(), timeout=5.0)
+            if not isinstance(auth_data, dict) or auth_data.get("token") != ADMIN_KEY:
+                await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+                return
+        except Exception:
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
+        chat_manager.admin_connections.append(websocket)
+    else:
+        await chat_manager.connect_admin(websocket)
 
     try:
         while True:
             raw_data = await websocket.receive_json()
+
+            # Ignore duplicate auth packets if sent
+            if isinstance(raw_data, dict) and raw_data.get("event") == "auth":
+                continue
 
             try:
                 valid_msg = IncomingChatPayload.model_validate(raw_data)

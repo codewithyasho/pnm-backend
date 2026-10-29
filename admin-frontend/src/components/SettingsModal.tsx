@@ -11,12 +11,11 @@ import {
 } from 'lucide-react';
 import {
   getStoredApiBase,
-  getStoredApiKey,
   setStoredApiBase,
-  setStoredApiKey,
+  getApiKey,
+  setApiKey as setGlobalApiKey,
   api,
   DEFAULT_API_BASE,
-  DEFAULT_API_KEY,
 } from '../services/api';
 
 interface SettingsModalProps {
@@ -31,7 +30,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onSaved,
 }) => {
   const [apiBase, setApiBase] = useState(getStoredApiBase());
-  const [apiKey, setApiKey] = useState(getStoredApiKey());
+  const [inputApiKey, setInputApiKey] = useState(getApiKey());
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{
     success: boolean;
@@ -42,7 +41,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   const handleSave = () => {
     setStoredApiBase(apiBase);
-    setStoredApiKey(apiKey);
+    setGlobalApiKey(inputApiKey);
     onSaved();
     onClose();
   };
@@ -51,11 +50,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setTesting(true);
     setTestResult(null);
     try {
-      // Temporarily store to test
+      // Temporarily store in memory to test
       setStoredApiBase(apiBase);
-      setStoredApiKey(apiKey);
+      setGlobalApiKey(inputApiKey);
 
       await api.checkHealth();
+      await api.verifyAdminKey(inputApiKey);
       const usersRes = await api.getUsers();
 
       // Test SSE stream connectivity via header-authenticated fetch (no URL query params)
@@ -66,7 +66,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         const sseRes = await fetch(`${apiBase.replace(/\/$/, '')}/admin/sse/stream`, {
           method: 'GET',
           headers: {
-            'x-api-key': apiKey,
+            'x-api-key': inputApiKey,
             'Accept': 'text/event-stream',
           },
           signal: testController.signal,
@@ -96,7 +96,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   const handleResetDefaults = () => {
     setApiBase(DEFAULT_API_BASE);
-    setApiKey(DEFAULT_API_KEY);
+    setInputApiKey('');
     setTestResult(null);
   };
 
@@ -170,13 +170,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </label>
               <input
                 type="password"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder="123"
+                value={inputApiKey}
+                onChange={(e) => setInputApiKey(e.target.value)}
+                placeholder="Enter admin security key..."
                 className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 font-mono text-xs focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
               />
               <p className="text-[11px] text-slate-400 mt-1">
-                Value matching <span className="font-mono">ADMIN_KEY</span> in backend/.env (default: <span className="font-mono">123</span>)
+                Value matching <span className="font-mono">ADMIN_KEY</span> on the backend. Stored in memory for current session only.
               </p>
             </div>
 

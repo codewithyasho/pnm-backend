@@ -8,6 +8,7 @@ import {
   Server,
   Layers,
   Radio,
+  Lock,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -15,6 +16,7 @@ interface HeaderProps {
   onRefresh: () => void;
   onExport: () => void;
   onOpenSettings: () => void;
+  onLockDashboard?: () => void;
   isRefreshing: boolean;
   isBackendHealthy: boolean | null;
   totalRecords: number;
@@ -26,6 +28,7 @@ export const Header: React.FC<HeaderProps> = ({
   onRefresh,
   onExport,
   onOpenSettings,
+  onLockDashboard,
   isRefreshing,
   isBackendHealthy,
   totalRecords,
@@ -166,12 +169,24 @@ export const Header: React.FC<HeaderProps> = ({
             {/* Settings Button */}
             <button
               onClick={onOpenSettings}
-              className="p-2 sm:px-3 sm:py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-semibold flex items-center gap-1.5 transition-colors"
+              className="p-2 sm:px-3 sm:py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
               title="API Key and Backend Settings"
             >
               <ShieldCheck className="w-4 h-4 text-indigo-600" />
               <span className="hidden sm:inline">API Config</span>
             </button>
+
+            {/* Lock Dashboard / Logout Button */}
+            {onLockDashboard && (
+              <button
+                onClick={onLockDashboard}
+                className="p-2 sm:px-3 sm:py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 active:bg-rose-200 text-rose-700 border border-rose-200 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                title="Lock Dashboard & Clear Authentication"
+              >
+                <Lock className="w-3.5 h-3.5 text-rose-600" />
+                <span className="hidden sm:inline">Lock Dashboard</span>
+              </button>
+            )}
           </div>
         </div>
       </div>

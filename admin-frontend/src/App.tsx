@@ -21,11 +21,15 @@ import { ContactsDirectory } from './components/ContactsDirectory';
 import { SettingsModal } from './components/SettingsModal';
 import { OverviewView } from './components/OverviewView';
 import { LiveChatView } from './components/LiveChatView';
+import { AdminLoginGate } from './components/AdminLoginGate';
 import { ToastContainer } from './components/Toast';
 import type { ToastMessage, ToastType } from './components/Toast';
 import { AlertCircle, RotateCw } from 'lucide-react';
 
 export function App() {
+  // Strict In-Memory Authentication State (starts unauthenticated on every page load/refresh)
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+
   // Navigation & UI state
   const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -139,12 +143,22 @@ export function App() {
     }
   }, [addToast]);
 
-  useEffect(() => {
-    loadDashboardData();
-  }, [loadDashboardData, configVersion]);
+  // Lock dashboard and clear in-memory credentials
+  const handleLockDashboard = useCallback(() => {
+    api.setApiKey('');
+    setIsAuthenticated(false);
+    addToast('🔒 Dashboard locked. In-memory session cleared.', 'info');
+  }, [addToast]);
 
-  // Real-Time Server-Sent Events (SSE) Stream Subscription
+  // Load initial data only when authenticated
   useEffect(() => {
+    if (!isAuthenticated) return;
+    loadDashboardData();
+  }, [isAuthenticated, loadDashboardData, configVersion]);
+
+  // Real-Time Server-Sent Events (SSE) Stream Subscription (only when authenticated)
+  useEffect(() => {
+    if (!isAuthenticated) return;
     const unsubscribe = api.subscribeToEnquiries(
       (newEnquiry) => {
         // 1. Prepend newly received enquiry into memory immediately
@@ -200,7 +214,7 @@ export function App() {
     return () => {
       unsubscribe();
     };
-  }, [addToast, configVersion]);
+  }, [isAuthenticated, addToast, configVersion]);
 
   // Load chat conversations from backend SQLite tables
   const loadChatConversations = useCallback(async () => {
@@ -218,13 +232,15 @@ export function App() {
     }
   }, []);
 
-  // Fetch initial chat data
+  // Fetch initial chat data (only when authenticated)
   useEffect(() => {
+    if (!isAuthenticated) return;
     loadChatConversations();
-  }, [loadChatConversations, configVersion]);
+  }, [isAuthenticated, loadChatConversations, configVersion]);
 
-  // Connect Admin Chat WebSocket for live presence and messaging
+  // Connect Admin Chat WebSocket for live presence and messaging (only when authenticated)
   useEffect(() => {
+    if (!isAuthenticated) return;
     const wsClient = api.connectAdminChatWS(
       // onMessage
       (msg: ChatMessage) => {
@@ -320,7 +336,7 @@ export function App() {
       wsClient.close();
       chatSenderRef.current = null;
     };
-  }, [addToast, loadChatConversations, configVersion]);
+  }, [isAuthenticated, addToast, loadChatConversations, configVersion]);
 
   // Send Chat message action (1-on-1 reply or global broadcast)
   const handleSendChatMessage = useCallback((toEmail: string | null, message: string): boolean => {
@@ -601,6 +617,21 @@ export function App() {
     addToast(`Exported ${filteredEnquiries.length} records to CSV`, 'success');
   };
 
+  // Full-Screen In-Memory Login Gate: No dashboard UI or network streams while locked
+  if (!isAuthenticated) {
+    return (
+      <>
+        <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+        <AdminLoginGate
+          onLoginSuccess={() => {
+            setIsAuthenticated(true);
+            addToast('Administrator authenticated. Welcome to PNM Portal.', 'success');
+          }}
+        />
+      </>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col text-slate-900 font-sans">
       {/* Toast notifications */}
@@ -612,6 +643,7 @@ export function App() {
         onRefresh={() => loadDashboardData(true)}
         onExport={handleExportCSV}
         onOpenSettings={() => setIsSettingsOpen(true)}
+        onLockDashboard={handleLockDashboard}
         isRefreshing={isRefreshing}
         isBackendHealthy={backendHealthy}
         totalRecords={enquiries.length}
