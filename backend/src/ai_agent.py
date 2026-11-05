@@ -1,6 +1,7 @@
 from pathlib import Path
 import os
 from typing import TypedDict, Annotated, List
+import httpx
 from dotenv import load_dotenv
 
 from langgraph.prebuilt import ToolNode, tools_condition
@@ -9,6 +10,7 @@ from langgraph.graph import StateGraph, START
 from langgraph.graph.message import add_messages
 from langgraph.types import interrupt, Command
 from langchain_core.messages import SystemMessage
+from langchain_core.runnables import RunnableLambda
 from langchain_core.tools import tool
 from langchain_groq import ChatGroq
 from langchain_ollama import ChatOllama
@@ -87,15 +89,33 @@ tools = [get_pnm_services_info, escalate_to_human_admin]
 
 # ----------------- Native LangChain Fallback Chain ----------------- #
 
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:latest")
 GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")
 
-# 1. Primary LLM: Local Ollama (3-second connection timeout so it fails over fast if closed)
-ollama_llm = ChatOllama(
-    model=OLLAMA_MODEL,
-    temperature=0.3,
-    client_kwargs={"timeout": 10.0},
-).bind_tools(tools=tools)
+
+def invoke_ollama_fresh(messages):
+    """
+    1. Pings Ollama in 0.5s to verify the app is actually running.
+    2. Uses a fresh ChatOllama client with a 30s timeout so cold-start model loading
+       into RAM/VRAM never times out prematurely when Ollama is reopened!
+    """
+    with httpx.Client(timeout=0.5) as client:
+        resp = client.get(f"{OLLAMA_BASE_URL}/api/tags")
+        resp.raise_for_status()
+
+    fresh_ollama = ChatOllama(
+        base_url=OLLAMA_BASE_URL,
+        model=OLLAMA_MODEL,
+        temperature=0.3,
+        client_kwargs={"timeout": 30.0},
+    ).bind_tools(tools=tools)
+
+    return fresh_ollama.invoke(messages)
+
+
+# 1. Primary Runnable: Fresh Ollama with instant 0.5s dead-check + 30s cold-start allowance
+ollama_runnable = RunnableLambda(invoke_ollama_fresh)
 
 # 2. Backup LLM: Cloud Groq LPU
 groq_llm = ChatGroq(
@@ -104,7 +124,7 @@ groq_llm = ChatGroq(
 ).bind_tools(tools=tools)
 
 # 3. Combine into a single resilient RunnableWithFallbacks chain
-llm_with_fallback = ollama_llm.with_fallbacks([groq_llm])
+llm_with_fallback = ollama_runnable.with_fallbacks([groq_llm])
 
 
 # ----------------- Agent Node ----------------- #
@@ -119,13 +139,14 @@ def support_agent_node(state: SupportAgentState) -> SupportAgentState:
     3. Keep answers under 3-4 short sentences so they fit nicely in a floating chat widget.
     """)
 
-    # Automatically tries ollama_llm first; if Ollama is closed, falls back to groq_llm!
+    # Automatically tries ollama_runnable first; if Ollama is closed, falls back to groq_llm!
     response = llm_with_fallback.invoke([system_prompt] + state["messages"])
 
     # Log which model actually served the response from response_metadata
     used_model = response.response_metadata.get(
         "model") or response.response_metadata.get("model_name", "Unknown")
-    print(f"\n\n\t🤖[AI AGENT] Response generated using model: {used_model}")
+    print(
+        f"\n\n\t🤖[AI AGENT] Response generated using model: {used_model}\n\n")
 
     return {"messages": [response]}
 
