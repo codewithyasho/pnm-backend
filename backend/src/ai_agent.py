@@ -11,6 +11,7 @@ from langgraph.types import interrupt, Command
 from langchain_core.messages import SystemMessage
 from langchain_core.tools import tool
 from langchain_groq import ChatGroq
+from langchain_ollama import ChatOllama
 
 env_path = Path(__file__).resolve().parent.parent / ".env"
 if env_path.exists():
@@ -71,7 +72,6 @@ def escalate_to_human_admin(reason: str) -> str:
     Args:
         reason (str): Brief summary of why the user wants to speak with a human admin.
     """
-    # Pause LangGraph execution and ask the user for confirmation via buttons!
     decision = interrupt(
         f"Would you like me to connect you directly with a live PNM Support Admin? (Reason: {reason})"
     )
@@ -85,8 +85,26 @@ def escalate_to_human_admin(reason: str) -> str:
 tools = [get_pnm_services_info, escalate_to_human_admin]
 
 
+# ----------------- Native LangChain Fallback Chain ----------------- #
+
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:latest")
 GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")
-llm = ChatGroq(model=GROQ_MODEL, temperature=0.3).bind_tools(tools=tools)
+
+# 1. Primary LLM: Local Ollama (3-second connection timeout so it fails over fast if closed)
+ollama_llm = ChatOllama(
+    model=OLLAMA_MODEL,
+    temperature=0.3,
+    client_kwargs={"timeout": 10.0},
+).bind_tools(tools=tools)
+
+# 2. Backup LLM: Cloud Groq LPU
+groq_llm = ChatGroq(
+    model=GROQ_MODEL,
+    temperature=0.3,
+).bind_tools(tools=tools)
+
+# 3. Combine into a single resilient RunnableWithFallbacks chain
+llm_with_fallback = ollama_llm.with_fallbacks([groq_llm])
 
 
 # ----------------- Agent Node ----------------- #
@@ -100,7 +118,15 @@ def support_agent_node(state: SupportAgentState) -> SupportAgentState:
     2. If the user asks to talk to a human, admin, real person, or support team, OR if the user is frustrated/arguing with you, IMMEDIATELY call the `escalate_to_human_admin` tool!
     3. Keep answers under 3-4 short sentences so they fit nicely in a floating chat widget.
     """)
-    response = llm.invoke([system_prompt] + state["messages"])
+
+    # Automatically tries ollama_llm first; if Ollama is closed, falls back to groq_llm!
+    response = llm_with_fallback.invoke([system_prompt] + state["messages"])
+
+    # Log which model actually served the response from response_metadata
+    used_model = response.response_metadata.get(
+        "model") or response.response_metadata.get("model_name", "Unknown")
+    print(f"\n\n\t🤖[AI AGENT] Response generated using model: {used_model}")
+
     return {"messages": [response]}
 
 
