@@ -1,6 +1,6 @@
 import os
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect, status
 from pydantic import ValidationError
 from sqlmodel import Session, select, or_
@@ -18,6 +18,45 @@ from models.user import (
 )
 
 chat_router = APIRouter(prefix="/admin", tags=["Live Support Chat"])
+
+
+DAILY_MESSAGE_LIMIT = 20
+RATE_LIMIT_WINDOW_HOURS = 24
+
+
+def get_user_rate_limit_status(db: Session, email: str) -> tuple[bool, int, int, str | None]:
+    """
+    Checks how many messages the user has sent in the last 24 hours.
+    Returns: (is_allowed, used_count, remaining_count, reset_time_iso)
+    """
+    cutoff = datetime.now(timezone.utc) - \
+        timedelta(hours=RATE_LIMIT_WINDOW_HOURS)
+
+    # Fetch user messages sent within the last 24 hours, ordered oldest first
+    recent_user_msgs = db.exec(
+        select(ChatMessage)
+        .where(
+            ChatMessage.user_email == email,
+            ChatMessage.sender_role == SenderRole.USER,
+            ChatMessage.created_at >= cutoff,
+        )
+        .order_by(ChatMessage.created_at.asc())
+    ).all()
+
+    used_count = len(recent_user_msgs)
+    remaining = max(0, DAILY_MESSAGE_LIMIT - used_count)
+    is_allowed = used_count < DAILY_MESSAGE_LIMIT
+
+    # Calculate when the oldest message in the 24h window expires
+    reset_time_iso = None
+    if not is_allowed and recent_user_msgs:
+        oldest_msg_time = recent_user_msgs[0].created_at
+        if oldest_msg_time.tzinfo is None:
+            oldest_msg_time = oldest_msg_time.replace(tzinfo=timezone.utc)
+        reset_dt = oldest_msg_time + timedelta(hours=RATE_LIMIT_WINDOW_HOURS)
+        reset_time_iso = reset_dt.isoformat()
+
+    return is_allowed, used_count, remaining, reset_time_iso
 
 
 def is_thread_interrupted(email: str) -> tuple[bool, str | None]:
@@ -86,6 +125,8 @@ def get_user_chat_history(
     ).all()
 
     has_interrupt, interrupt_prompt = is_thread_interrupted(email)
+    is_allowed, used_count, remaining_msgs, reset_at = get_user_rate_limit_status(
+        session, email)
 
     return {
         "status": "success",
@@ -95,6 +136,13 @@ def get_user_chat_history(
         "escalation_reason": chat_sess.escalation_reason,
         "has_pending_interrupt": has_interrupt,
         "interrupt_prompt": interrupt_prompt,
+        "rate_limit": {
+            "daily_limit": DAILY_MESSAGE_LIMIT,
+            "used": used_count,
+            "remaining": remaining_msgs,
+            "is_rate_limited": (not chat_sess.is_escalated) and (not is_allowed),
+            "reset_at": reset_at,
+        },
         "messages": messages,
     }
 
@@ -124,6 +172,12 @@ def get_all_conversations(
             and m.sender_role == SenderRole.USER
             and not m.is_read_by_admin
         )
+
+        # Calculate 24h AI rate limit status for this user so Admin can see it!
+        is_allowed, used_count, remaining_msgs, reset_at = get_user_rate_limit_status(
+            session, s.corporate_email
+        )
+
         threads.append({
             "corporate_email": s.corporate_email,
             "full_name": s.full_name,
@@ -132,6 +186,13 @@ def get_all_conversations(
             "escalation_reason": s.escalation_reason,
             "last_active_at": s.last_active_at,
             "unread_count": unread_count,
+            "rate_limit": {
+                "daily_limit": DAILY_MESSAGE_LIMIT,
+                "used": used_count,
+                "remaining": remaining_msgs,
+                "is_rate_limited": (not s.is_escalated) and (not is_allowed),
+                "reset_at": reset_at,
+            },
             "messages": user_msgs,
         })
 
@@ -257,25 +318,28 @@ async def user_websocket_endpoint(
                 })
                 continue
 
-            # CASE A: Visitor clicked [✅ Yes] or [❌ No] on the HITL Confirmation UI
+            # CASE A: Visitor clicked [✅ Yes] or [❌ No] on HITL / Rate-Limit Escalation UI
             if valid_msg.hitl_decision:
                 decision = valid_msg.hitl_decision.strip().lower()
+                has_int, _ = is_thread_interrupted(email)
 
-                try:
-                    response = await asyncio.to_thread(
-                        pnm_support_graph.invoke,
-                        Command(resume=decision),
-                        config,
-                    )
-                except Exception as e:
-                    await websocket.send_json({
-                        "event": "error",
-                        "message": f"AI Resume Error: {e}",
-                    })
-                    continue
+                response = {}
+                if has_int:
+                    try:
+                        response = await asyncio.to_thread(
+                            pnm_support_graph.invoke,
+                            Command(resume=decision),
+                            config,
+                        )
+                    except Exception as e:
+                        await websocket.send_json({
+                            "event": "error",
+                            "message": f"AI Resume Error: {e}",
+                        })
+                        continue
 
                 if decision == "yes":
-                    reason = "Requested live human support"
+                    reason = "Daily AI limit reached — requested human support" if not has_int else "Requested live human support"
                     for m in reversed(response.get("messages", [])):
                         content_str = str(getattr(m, "content", ""))
                         if "ESCALATED_SUCCESS::" in content_str:
@@ -298,7 +362,7 @@ async def user_websocket_endpoint(
                             user_email=email,
                             user_name=name,
                             sender_role=SenderRole.AI,
-                            message="✅ You are now connected to Live Human Support! Our Admin team has been notified and will reply here shortly.",
+                            message="✅ You are now connected to Live Human Support! Your chat input is unlocked and our Admin team will reply here shortly.",
                             is_broadcast=False,
                             is_read_by_admin=False,
                         )
@@ -363,6 +427,24 @@ async def user_websocket_endpoint(
                         ChatSession.corporate_email == email)
                 ).first()
                 is_escalated = chat_sess.is_escalated if chat_sess else False
+
+                # 1. Check 24-hour rate limit ONLY if user is in AI Chatbot mode (not escalated to human!)
+                is_allowed, used_count, remaining_msgs, reset_at = get_user_rate_limit_status(
+                    db, email)
+                if not is_escalated and not is_allowed:
+                    await websocket.send_json({
+                        "event": "rate_limit_exceeded",
+                        "message": "⚠️ Your daily AI chatbot limit (20 messages) has been reached! You can connect to a Live Human Admin right now or come back after 24 hours.",
+                        "rate_limit": {
+                            "daily_limit": DAILY_MESSAGE_LIMIT,
+                            "used": used_count,
+                            "remaining": 0,
+                            "is_rate_limited": True,
+                            "reset_at": reset_at,
+                        },
+                    })
+                    continue
+
                 if chat_sess:
                     chat_sess.last_active_at = datetime.now(timezone.utc)
                     db.add(chat_sess)
@@ -380,7 +462,21 @@ async def user_websocket_endpoint(
                 db.refresh(new_msg)
                 user_msg_dict = new_msg.model_dump(mode="json")
 
-            user_event = {"event": "chat_message", "data": user_msg_dict}
+                # Re-calculate remaining AI quota after saving this message
+                _, new_used, new_remaining, new_reset = get_user_rate_limit_status(
+                    db, email)
+
+            user_event = {
+                "event": "chat_message",
+                "data": user_msg_dict,
+                "rate_limit": {
+                    "daily_limit": DAILY_MESSAGE_LIMIT,
+                    "used": new_used,
+                    "remaining": new_remaining,
+                    "is_rate_limited": (not is_escalated) and (new_remaining == 0),
+                    "reset_at": new_reset,
+                },
+            }
             await chat_manager.send_to_user(email, user_event)
             await chat_manager.send_to_admins(user_event)
 
@@ -388,6 +484,8 @@ async def user_websocket_endpoint(
             if is_escalated:
                 continue
 
+            # If this was their 20th AI message, let the AI answer this 20th message,
+            # and also send the rate_limit_exceeded banner right after!
             # Otherwise -> Route to LangGraph AI Assistant!
             await chat_manager.send_to_user(email, {"event": "ai_typing", "is_typing": True})
 
