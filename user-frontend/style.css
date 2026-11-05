@@ -2942,6 +2942,150 @@ textarea {
   opacity: 0.85;
 }
 
+/* Quota & Rate Limit Banner Container */
+.pnm-chat-quota-container {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.pnm-rate-limit-card {
+  background: linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%);
+  border-top: 1.5px solid #FCD34D;
+  border-bottom: 1.5px solid #FCD34D;
+  padding: 12px 16px;
+  animation: fadeInRateLimit 0.25s ease-out;
+}
+
+@keyframes fadeInRateLimit {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.rate-limit-card-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.rate-limit-icon {
+  font-size: 1rem;
+}
+
+.rate-limit-title {
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: #92400E;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.rate-limit-text {
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: #78350F;
+  margin: 0 0 10px 0;
+  font-weight: 500;
+}
+
+.rate-limit-talk-btn {
+  width: 100%;
+  background: linear-gradient(135deg, #123D7D 0%, #0E2F60 100%);
+  color: #FFFFFF;
+  border: none;
+  border-radius: 10px;
+  padding: 9px 14px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  box-shadow: 0 4px 12px rgba(18, 61, 125, 0.2);
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.rate-limit-talk-btn:hover {
+  background: linear-gradient(135deg, #16A34A 0%, #15803D 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(22, 163, 74, 0.3);
+}
+
+.rate-limit-talk-btn:active {
+  transform: translateY(0);
+}
+
+.rate-limit-talk-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Subtle AI Quota Bar */
+.pnm-quota-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 12px;
+  background: #F8FAFC;
+  border-top: 1px solid #E2E8F0;
+}
+
+.quota-badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #475569;
+  padding: 2px 8px;
+  border-radius: 12px;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.quota-badge.quota-amber {
+  background: #FEF3C7;
+  color: #B45309;
+  border: 1px solid #FDE68A;
+  font-weight: 700;
+}
+
+.quota-badge.quota-red {
+  background: #FEE2E2;
+  color: #B91C1C;
+  border: 1px solid #FECACA;
+  font-weight: 700;
+}
+
+.quota-badge.quota-unlimited {
+  background: #D1FAE5;
+  color: #047857;
+  border: 1px solid #A7F3D0;
+  font-weight: 700;
+}
+
+.chat-text-input.disabled {
+  background: #F1F5F9;
+  color: #94A3B8;
+  cursor: not-allowed;
+  border-color: #E2E8F0;
+}
+
+.chat-send-btn.disabled {
+  background: #94A3B8;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 /* Chat Input Bar */
 .pnm-chat-input-bar {
   display: flex;

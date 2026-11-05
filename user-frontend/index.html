@@ -1621,6 +1621,28 @@
           </div>
         </div>
 
+        <!-- 24h AI Chatbot Rate Limit Alert & Quota Counter -->
+        <div class="pnm-chat-quota-container" id="pnmChatQuotaContainer">
+          <!-- Prominent Rate Limit Exceeded Card (shows when remaining === 0 && !is_escalated) -->
+          <div class="pnm-rate-limit-card" id="pnmRateLimitCard" style="display: none;">
+            <div class="rate-limit-card-header">
+              <span class="rate-limit-icon">⚠️</span>
+              <span class="rate-limit-title">Daily AI Limit Reached</span>
+            </div>
+            <p class="rate-limit-text">
+              ⚠️ Your daily AI chatbot limit (20/20 messages) has been reached! You can connect to a Live Human Admin right now or come back after 24 hours.
+            </p>
+            <button type="button" class="rate-limit-talk-btn" id="pnmRateLimitTalkBtn">
+              👨‍💼 Talk to Human Admin
+            </button>
+          </div>
+
+          <!-- Remaining AI Quota Bar -->
+          <div class="pnm-quota-bar" id="pnmQuotaBar">
+            <span class="quota-badge" id="pnmQuotaBadge">🤖 AI Quota: 20/20 messages left today</span>
+          </div>
+        </div>
+
         <!-- Message Composer Form -->
         <form class="pnm-chat-input-bar" id="pnmChatInputForm" onsubmit="return false;">
           <input type="text" id="pnmChatMessageInput" class="chat-text-input" placeholder="Type a message..."

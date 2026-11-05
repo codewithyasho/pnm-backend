@@ -7,6 +7,7 @@ import type {
   ChatMessage,
   UserPresenceEvent,
   SessionModeChangedEvent,
+  RateLimitStatus,
 } from './types';
 import { api } from './services/api';
 import { Header } from './components/Header';
@@ -243,7 +244,7 @@ export function App() {
     if (!isAuthenticated) return;
     const wsClient = api.connectAdminChatWS(
       // onMessage
-      (msg: ChatMessage) => {
+      (msg: ChatMessage, rateLimit?: RateLimitStatus) => {
         setChatThreads((prev) => {
           if (msg.is_broadcast) {
             // Append broadcast message to all threads
@@ -271,6 +272,7 @@ export function App() {
                 messages: [...t.messages, msg],
                 last_active_at: msg.created_at,
                 unread_count: isUserSender ? t.unread_count + 1 : t.unread_count,
+                rate_limit: rateLimit || t.rate_limit,
               };
             }
             return t;
@@ -327,6 +329,25 @@ export function App() {
             'info'
           );
         }
+      },
+      // onRateLimit (handles live rate_limit_exceeded events)
+      (userEmail: string, rateLimit: RateLimitStatus) => {
+        const targetEmail = userEmail.toLowerCase();
+        setChatThreads((prev) =>
+          prev.map((t) => {
+            if (t.corporate_email.toLowerCase() === targetEmail) {
+              return {
+                ...t,
+                rate_limit: rateLimit,
+              };
+            }
+            return t;
+          })
+        );
+        addToast(
+          `⚠️ Visitor ${userEmail} hit the 20/20 daily AI chatbot limit.`,
+          'info'
+        );
       }
     );
 

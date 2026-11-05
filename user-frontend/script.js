@@ -679,6 +679,11 @@ document.addEventListener("DOMContentLoaded", () => {
   const chatMessagesList = document.getElementById("pnmChatMessages");
   const chatInputForm = document.getElementById("pnmChatInputForm");
   const chatMessageInput = document.getElementById("pnmChatMessageInput");
+  const chatSendBtn = document.getElementById("pnmChatSendBtn");
+  const rateLimitCard = document.getElementById("pnmRateLimitCard");
+  const rateLimitTalkBtn = document.getElementById("pnmRateLimitTalkBtn");
+  const quotaBar = document.getElementById("pnmQuotaBar");
+  const quotaBadge = document.getElementById("pnmQuotaBadge");
 
   let chatSocket = null;
   let chatReconnectTimer = null;
@@ -687,6 +692,15 @@ document.addEventListener("DOMContentLoaded", () => {
   let currentIsEscalated = false;
   let aiTypingElement = null;
   const renderedMessageIds = new Set();
+
+  // 24-hour AI Rate Limit State (20 messages limit per 24 hours in AI Assistant mode)
+  let currentRateLimit = {
+    daily_limit: 20,
+    used: 0,
+    remaining: 20,
+    is_rate_limited: false,
+    reset_at: null,
+  };
 
   // Helper: Persistent UUID Session Token
   function getOrCreateChatToken() {
@@ -753,13 +767,81 @@ document.addEventListener("DOMContentLoaded", () => {
   // Update Header Mode Badge (AI vs Human Support)
   function updateHeaderModeBadge(isEscalated) {
     currentIsEscalated = Boolean(isEscalated);
-    if (!chatModeBadge) return;
-    if (currentIsEscalated) {
-      chatModeBadge.className = "chat-mode-badge mode-admin";
-      chatModeBadge.textContent = "👨‍💼 Live Admin Support";
+    if (chatModeBadge) {
+      if (currentIsEscalated) {
+        chatModeBadge.className = "chat-mode-badge mode-admin";
+        chatModeBadge.textContent = "👨‍💼 Live Admin Support";
+      } else {
+        chatModeBadge.className = "chat-mode-badge mode-ai";
+        chatModeBadge.textContent = "🤖 PNM AI Assistant";
+      }
+    }
+    // Re-apply rate limiting rules: rate limiting ONLY applies when is_escalated === false!
+    updateRateLimitUI();
+  }
+
+  // Update AI Quota Badge, Rate Limit Banner & Input Lock State
+  function updateRateLimitUI(rl) {
+    if (rl) {
+      currentRateLimit = {
+        daily_limit: typeof rl.daily_limit === "number" ? rl.daily_limit : 20,
+        used: typeof rl.used === "number" ? rl.used : 0,
+        remaining: typeof rl.remaining === "number" ? rl.remaining : 20,
+        is_rate_limited: Boolean(rl.is_rate_limited),
+        reset_at: rl.reset_at || null,
+      };
+    }
+
+    // IMPORTANT: Rate limiting ONLY applies when in AI Assistant mode (!currentIsEscalated).
+    // When is_escalated === true, rate limiting is completely bypassed for unlimited human support.
+    const isLimited = (!currentIsEscalated) && (currentRateLimit.is_rate_limited || currentRateLimit.remaining <= 0);
+
+    // 1. Update Remaining Quota Badge
+    if (quotaBadge) {
+      if (currentIsEscalated) {
+        quotaBadge.className = "quota-badge quota-unlimited";
+        quotaBadge.textContent = "👨‍💼 Unlimited Human Support";
+      } else {
+        const remaining = Math.max(0, currentRateLimit.remaining);
+        const limit = currentRateLimit.daily_limit || 20;
+        quotaBadge.textContent = `🤖 AI Quota: ${remaining}/${limit} messages left today`;
+        if (remaining === 0) {
+          quotaBadge.className = "quota-badge quota-red";
+        } else if (remaining <= 3) {
+          quotaBadge.className = "quota-badge quota-amber";
+        } else {
+          quotaBadge.className = "quota-badge";
+        }
+      }
+    }
+
+    // 2. Update Rate Limit Banner & Input Lock State
+    if (isLimited) {
+      if (rateLimitCard) rateLimitCard.style.display = "block";
+      if (chatMessageInput) {
+        chatMessageInput.disabled = true;
+        chatMessageInput.placeholder = "Daily AI limit reached (20/20) - Connect to Admin above";
+        chatMessageInput.classList.add("disabled");
+      }
+      if (chatSendBtn) {
+        chatSendBtn.disabled = true;
+        chatSendBtn.classList.add("disabled");
+      }
     } else {
-      chatModeBadge.className = "chat-mode-badge mode-ai";
-      chatModeBadge.textContent = "🤖 PNM AI Assistant";
+      if (rateLimitCard) rateLimitCard.style.display = "none";
+      if (chatMessageInput) {
+        chatMessageInput.disabled = false;
+        chatMessageInput.placeholder = currentIsEscalated ? "Type a message to Human Admin..." : "Type a message...";
+        chatMessageInput.classList.remove("disabled");
+      }
+      if (chatSendBtn) {
+        chatSendBtn.disabled = false;
+        chatSendBtn.classList.remove("disabled");
+      }
+      if (rateLimitTalkBtn) {
+        rateLimitTalkBtn.disabled = false;
+        rateLimitTalkBtn.textContent = "👨‍💼 Talk to Human Admin";
+      }
     }
   }
 
@@ -835,6 +917,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
     chatMessagesList.appendChild(card);
     scrollMessagesToBottom(true);
+  }
+
+  // Connect to Human Admin button on rate limit exceeded card
+  if (rateLimitTalkBtn) {
+    rateLimitTalkBtn.addEventListener("click", () => {
+      rateLimitTalkBtn.disabled = true;
+      rateLimitTalkBtn.textContent = "Connecting to Human Admin...";
+      if (chatSocket && chatSocket.readyState === WebSocket.OPEN) {
+        chatSocket.send(JSON.stringify({ hitl_decision: "yes" }));
+      }
+    });
   }
 
   // Render a chat message bubble
@@ -918,6 +1011,11 @@ document.addEventListener("DOMContentLoaded", () => {
         if (typeof data.is_escalated !== "undefined") {
           updateHeaderModeBadge(data.is_escalated);
         }
+        if (data.rate_limit) {
+          updateRateLimitUI(data.rate_limit);
+        } else {
+          updateRateLimitUI();
+        }
         if (Array.isArray(data.messages)) {
           if (data.messages.length > 0 && chatMessagesList) {
             chatMessagesList.innerHTML = "";
@@ -966,6 +1064,12 @@ document.addEventListener("DOMContentLoaded", () => {
             setAiTyping(false);
             renderMessageItem(packet.data, true);
 
+            if (packet.rate_limit) {
+              updateRateLimitUI(packet.rate_limit);
+            } else if (packet.data.rate_limit) {
+              updateRateLimitUI(packet.data.rate_limit);
+            }
+
             // If chat window is closed, increment unread badge for admin/ai/broadcast messages
             const isWidgetOpen = chatWidget && chatWidget.classList.contains("open");
             if (!isWidgetOpen && packet.data.sender_role !== "user") {
@@ -977,6 +1081,16 @@ document.addEventListener("DOMContentLoaded", () => {
             renderHitlInterruptCard(packet.prompt);
           } else if (packet.event === "session_mode_changed") {
             updateHeaderModeBadge(packet.is_escalated);
+          } else if (packet.event === "rate_limit_exceeded") {
+            setAiTyping(false);
+            if (packet.rate_limit) {
+              updateRateLimitUI(packet.rate_limit);
+            } else {
+              updateRateLimitUI({ is_rate_limited: true, remaining: 0 });
+            }
+            if (packet.message) {
+              showToast(packet.message, "error");
+            }
           }
         } catch (err) {
           console.error("Error processing incoming chat packet:", err);
@@ -1103,6 +1217,13 @@ document.addEventListener("DOMContentLoaded", () => {
         localStorage.removeItem("pnm_chat_email");
         renderedMessageIds.clear();
         setAiTyping(false);
+        currentRateLimit = {
+          daily_limit: 20,
+          used: 0,
+          remaining: 20,
+          is_rate_limited: false,
+          reset_at: null,
+        };
         updateHeaderModeBadge(false);
         if (chatMessagesList) {
           chatMessagesList.innerHTML = `

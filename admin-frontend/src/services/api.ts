@@ -12,6 +12,7 @@ import type {
   ChatMessage,
   UserPresenceEvent,
   SessionModeChangedEvent,
+  RateLimitStatus,
 } from '../types';
 
 export const DEFAULT_API_BASE = 'https://api.theseventhsip.online';
@@ -357,10 +358,11 @@ export const api = {
   },
 
   connectAdminChatWS: (
-    onMessage: (msg: ChatMessage) => void,
+    onMessage: (msg: ChatMessage, rateLimit?: RateLimitStatus) => void,
     onPresence: (presence: UserPresenceEvent) => void,
     onStatusChange?: (status: 'connecting' | 'connected' | 'error' | 'disconnected') => void,
-    onModeChange?: (mode: SessionModeChangedEvent) => void
+    onModeChange?: (mode: SessionModeChangedEvent) => void,
+    onRateLimit?: (email: string, rateLimit: RateLimitStatus) => void
   ): {
     send: (toEmail: string | null, message: string) => boolean;
     close: () => void;
@@ -396,11 +398,16 @@ export const api = {
           try {
             const packet = JSON.parse(event.data);
             if (packet.event === 'chat_message' && packet.data) {
-              onMessage(packet.data);
+              const rl = packet.rate_limit || (packet.data as { rate_limit?: RateLimitStatus })?.rate_limit;
+              onMessage(packet.data, rl);
             } else if (packet.event === 'user_presence') {
               onPresence(packet as UserPresenceEvent);
             } else if (packet.event === 'session_mode_changed') {
               onModeChange?.(packet as SessionModeChangedEvent);
+            } else if (packet.event === 'rate_limit_exceeded') {
+              if (packet.user_email && packet.rate_limit) {
+                onRateLimit?.(packet.user_email, packet.rate_limit as RateLimitStatus);
+              }
             }
           } catch (err) {
             console.error('[Admin Chat WS] Error parsing packet:', err);

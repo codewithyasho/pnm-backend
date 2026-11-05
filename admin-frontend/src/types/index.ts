@@ -70,6 +70,14 @@ export interface ChatMessage {
   created_at: string;
 }
 
+export interface RateLimitStatus {
+  daily_limit: number;
+  used: number;
+  remaining: number;
+  is_rate_limited: boolean;
+  reset_at?: string | null;
+}
+
 export interface ChatSessionThread {
   corporate_email: string;
   full_name: string;
@@ -78,6 +86,7 @@ export interface ChatSessionThread {
   escalation_reason?: string | null;
   last_active_at: string;
   unread_count: number;
+  rate_limit?: RateLimitStatus;
   messages: ChatMessage[];
 }
 
@@ -97,6 +106,14 @@ export interface UserPresenceEvent {
 export interface ChatMessageEvent {
   event: 'chat_message';
   data: ChatMessage;
+  rate_limit?: RateLimitStatus;
+}
+
+export interface RateLimitExceededEvent {
+  event: 'rate_limit_exceeded';
+  user_email?: string;
+  message?: string;
+  rate_limit?: RateLimitStatus;
 }
 
 export interface SessionModeChangedEvent {

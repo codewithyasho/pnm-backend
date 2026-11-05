@@ -449,8 +449,8 @@ export const LiveChatView: React.FC<LiveChatViewProps> = ({
                         )}
                       </div>
 
-                      {/* Escalation / AI Status Badge & Email */}
-                      <div className="flex items-center gap-1.5 mt-0.5 mb-1">
+                      {/* Escalation / AI Status Badge, Quota Pill & Email */}
+                      <div className="flex items-center gap-1.5 mt-0.5 mb-1 flex-wrap">
                         {thread.is_escalated ? (
                           <span
                             className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-rose-50 text-rose-700 border border-rose-200 text-[10px] font-bold shrink-0"
@@ -465,6 +465,43 @@ export const LiveChatView: React.FC<LiveChatViewProps> = ({
                             <span>AI Mode</span>
                           </span>
                         )}
+
+                        {/* 24-Hour AI Quota Compact Pill Badge */}
+                        {(() => {
+                          const remainingQuota = typeof thread.rate_limit?.remaining === 'number' ? thread.rate_limit.remaining : 20;
+                          const dailyLimit = typeof thread.rate_limit?.daily_limit === 'number' ? thread.rate_limit.daily_limit : 20;
+                          const isLimitHit = remainingQuota === 0 && !thread.is_escalated;
+
+                          if (isLimitHit) {
+                            return (
+                              <span
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-rose-100 text-rose-800 border border-rose-300 text-[10px] font-extrabold shrink-0 animate-pulse"
+                                title="Daily AI chatbot message limit reached (20/20)"
+                              >
+                                ⚠️ 0/{dailyLimit} Limit Hit
+                              </span>
+                            );
+                          }
+                          if (remainingQuota <= 5) {
+                            return (
+                              <span
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200 text-[10px] font-semibold shrink-0"
+                                title={`${remainingQuota} of ${dailyLimit} AI messages left in the last 24 hours`}
+                              >
+                                💬 {remainingQuota}/{dailyLimit} left
+                              </span>
+                            );
+                          }
+                          return (
+                            <span
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200 text-[10px] font-medium shrink-0"
+                              title={`${remainingQuota} of ${dailyLimit} AI messages left in the last 24 hours`}
+                            >
+                              💬 {remainingQuota}/{dailyLimit} left
+                            </span>
+                          );
+                        })()}
+
                         <span className="text-[11px] text-slate-500 truncate flex-1">
                           {threadEmail}
                         </span>
@@ -550,7 +587,7 @@ export const LiveChatView: React.FC<LiveChatViewProps> = ({
                         </span>
                       </span>
                     </div>
-                    <div className="flex items-center gap-2 text-xs text-slate-500 truncate">
+                    <div className="flex items-center gap-2 text-xs text-slate-500 flex-wrap mt-0.5">
                       <span className="truncate">{currentThread.corporate_email}</span>
                       <button
                         type="button"
@@ -564,6 +601,71 @@ export const LiveChatView: React.FC<LiveChatViewProps> = ({
                           <Copy className="w-3.5 h-3.5" />
                         )}
                       </button>
+
+                      <span className="text-slate-300">•</span>
+
+                      {/* Header Mode Badge */}
+                      {currentThread.is_escalated ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200 text-[11px] font-bold shrink-0">
+                          <AlertTriangle className="w-3 h-3 text-rose-600" />
+                          <span>👨‍💼 Live Admin Support</span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 border border-violet-200 text-[11px] font-semibold shrink-0">
+                          <Bot className="w-3 h-3 text-violet-600" />
+                          <span>🤖 PNM AI Assistant</span>
+                        </span>
+                      )}
+
+                      <span className="text-slate-300">•</span>
+
+                      {/* Remaining AI Quota Badge */}
+                      {(() => {
+                        const remaining = typeof currentThread.rate_limit?.remaining === 'number' ? currentThread.rate_limit.remaining : 20;
+                        const daily = typeof currentThread.rate_limit?.daily_limit === 'number' ? currentThread.rate_limit.daily_limit : 20;
+
+                        if (currentThread.is_escalated) {
+                          return (
+                            <span
+                              className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px] font-bold shrink-0"
+                              title="Live Human Support: Unlimited messaging allowed"
+                            >
+                              <span>👨‍💼 Human Mode (Unlimited) • AI Quota: {remaining}/{daily} left</span>
+                            </span>
+                          );
+                        }
+                        if (remaining === 0) {
+                          return (
+                            <span
+                              className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-300 text-[11px] font-extrabold shrink-0 animate-pulse"
+                              title="Daily AI chatbot message limit reached (20/20)"
+                            >
+                              <AlertTriangle className="w-3 h-3 text-rose-600" />
+                              <span>⚠️ 0/{daily} messages left today (Limit Hit)</span>
+                            </span>
+                          );
+                        }
+                        if (remaining <= 5) {
+                          return (
+                            <span
+                              className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200 text-[11px] font-bold shrink-0"
+                              title={`${remaining} of ${daily} AI messages left today`}
+                            >
+                              <Bot className="w-3 h-3 text-amber-600" />
+                              <span>🤖 {remaining}/{daily} messages left today</span>
+                            </span>
+                          );
+                        }
+                        return (
+                          <span
+                            className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 text-[11px] font-semibold shrink-0"
+                            title={`${remaining} of ${daily} AI messages left today`}
+                          >
+                            <Bot className="w-3 h-3 text-indigo-600" />
+                            <span>🤖 {remaining}/{daily} messages left today</span>
+                          </span>
+                        );
+                      })()}
                     </div>
                   </div>
                 </div>
@@ -629,6 +731,21 @@ export const LiveChatView: React.FC<LiveChatViewProps> = ({
                     <Bot className={`w-3.5 h-3.5 ${isReturningToAI ? 'animate-spin' : ''}`} />
                     <span>{isReturningToAI ? 'Returning...' : 'Return to AI Bot'}</span>
                   </button>
+                </div>
+              )}
+
+              {/* AI Rate Limit Hit Notice Banner */}
+              {!currentThread.is_escalated && (currentThread.rate_limit?.remaining === 0 || currentThread.rate_limit?.is_rate_limited) && (
+                <div className="bg-amber-50 border-b border-amber-200 px-4 py-2.5 flex items-center justify-between text-xs text-amber-900 shrink-0">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="font-extrabold flex items-center gap-1 text-amber-700 shrink-0">
+                      <AlertTriangle className="w-3.5 h-3.5" />
+                      <span>Daily AI Rate Limit Reached (20/20):</span>
+                    </span>
+                    <span className="truncate text-amber-800">
+                      This visitor used all 20 AI chatbot messages today. Reply below to initiate human live support and unlock their chat!
+                    </span>
+                  </div>
                 </div>
               )}
 

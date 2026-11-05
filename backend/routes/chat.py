@@ -432,8 +432,9 @@ async def user_websocket_endpoint(
                 is_allowed, used_count, remaining_msgs, reset_at = get_user_rate_limit_status(
                     db, email)
                 if not is_escalated and not is_allowed:
-                    await websocket.send_json({
+                    rl_payload = {
                         "event": "rate_limit_exceeded",
+                        "user_email": email,
                         "message": "⚠️ Your daily AI chatbot limit (20 messages) has been reached! You can connect to a Live Human Admin right now or come back after 24 hours.",
                         "rate_limit": {
                             "daily_limit": DAILY_MESSAGE_LIMIT,
@@ -442,7 +443,9 @@ async def user_websocket_endpoint(
                             "is_rate_limited": True,
                             "reset_at": reset_at,
                         },
-                    })
+                    }
+                    await websocket.send_json(rl_payload)
+                    await chat_manager.send_to_admins(rl_payload)
                     continue
 
                 if chat_sess:
